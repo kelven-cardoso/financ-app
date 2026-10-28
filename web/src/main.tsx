@@ -5,6 +5,7 @@ import './estilos/app.css';
 import { App } from './App';
 import { ProvedorFinanc } from './lib/estado';
 import { preferencia } from './lib/local';
+import './lib/instalar';
 
 // tema escolhido em Ajustes (sistema, claro ou escuro)
 const tema = preferencia('tema', 'sistema');

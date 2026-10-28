@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { CalendarRange, ChevronRight, CloudCog, Info, LogOut, MoonStar, ShieldCheck, Target } from 'lucide-react';
+import { CalendarRange, ChevronRight, CloudCog, Download, Info, LogOut, MoonStar, ShieldCheck, Target } from 'lucide-react';
 import { useFinanc } from '../lib/estado';
 import { ir, useFolhas } from '../lib/navegacao';
 import { preferencia, salvarPreferencia } from '../lib/local';
 import { dataHora } from '../lib/formato';
+import { useInstalacao } from '../lib/instalar';
 import { Confirmar, CorpoFolha, Segmentado } from '../ui/base';
 
 function aplicarTema(t: string) {
@@ -33,9 +34,23 @@ export function Ajustes() {
   const fixas = snap?.recorrentes.filter((r) => r.ativo).length ?? 0;
   const orc = snap?.orcamentos_cadastro.length ?? 0;
   const pend = fila.length;
+  const inst = useInstalacao();
   return (
     <>
       <header className="topo"><h1>Ajustes</h1></header>
+      {inst.podeInstalar && (
+        <div className="faixa">
+          <Download aria-hidden="true" />
+          <span>Instale o Financ para abrir como app, até sem internet.</span>
+          <button type="button" className="btn peq" onClick={() => inst.instalar()}>Instalar</button>
+        </div>
+      )}
+      {inst.dicaIos && (
+        <div className="faixa">
+          <Download aria-hidden="true" />
+          <span>Para instalar no iPhone: botão Compartilhar e depois Adicionar à Tela de Início.</span>
+        </div>
+      )}
       <div className="grupo">
         <Item icone={<CalendarRange />} titulo="Contas e receitas fixas" sub={`${fixas} ativas`} aoClicar={() => ir('/ajustes/fixas')} />
         <Item icone={<Target />} titulo="Orçamentos" sub={orc ? `${orc} por mês` : 'Nenhum'} aoClicar={() => ir('/ajustes/orcamentos')} />

@@ -28,8 +28,11 @@ export function MolduraFolha({ rotulo, fechar, children, topo }: { rotulo: strin
     if (!topo) return;
     const anterior = document.activeElement as HTMLElement | null;
     const el = ref.current;
-    const foco = el?.querySelector<HTMLElement>('[autofocus], input, select, textarea, button:not(.icone-btn)');
-    foco?.focus({ preventScroll: true });
+    // respeita o autoFocus do formulário; senão, foca o primeiro campo
+    if (!el?.contains(document.activeElement)) {
+      const foco = el?.querySelector<HTMLElement>('input, select, textarea, button:not(.icone-btn)');
+      foco?.focus({ preventScroll: true });
+    }
     const tecla = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
