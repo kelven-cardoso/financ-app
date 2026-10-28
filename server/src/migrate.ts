@@ -64,7 +64,9 @@ const MIGRACOES: { versao: number; sql: string }[] = [
 ];
 
 export async function migrar(): Promise<void> {
-  await sql`CREATE SCHEMA IF NOT EXISTS financ_app`;
+  // em produção o schema já existe e pertence ao papel do app (sem privilégio de criar schemas)
+  const [existe] = await sql`SELECT 1 FROM pg_namespace WHERE nspname = 'financ_app'`;
+  if (!existe) await sql`CREATE SCHEMA financ_app`;
   await sql`CREATE TABLE IF NOT EXISTS financ_app.migracoes (versao int PRIMARY KEY, aplicada_em timestamptz NOT NULL DEFAULT now())`;
   const feitas = new Set((await sql<{ versao: number }[]>`SELECT versao FROM financ_app.migracoes`).map((r) => r.versao));
   for (const m of MIGRACOES) {

@@ -11,8 +11,15 @@ import { rotasDados } from './routes/dados.js';
 import { rotasSeguranca } from './routes/seguranca.js';
 
 const app = Fastify({
-  logger: { level: process.env.LOG_LEVEL ?? 'info', redact: ['req.headers.cookie', 'req.headers.authorization'] },
-  trustProxy: true,
+  logger: {
+    level: process.env.LOG_LEVEL ?? 'info',
+    // sem query string nos logs (o link de configuração leva o token na URL)
+    serializers: {
+      req: (req: { method: string; url: string; ip?: string }) => ({ method: req.method, url: req.url.split('?')[0], ip: req.ip }),
+    },
+  },
+  // só o proxy do Easypanel (Traefik) fica na frente: confiar em 1 salto evita IP forjado no X-Forwarded-For
+  trustProxy: (_endereco: string, salto: number) => salto < Number(process.env.TRUST_PROXY_HOPS ?? 1),
   bodyLimit: 256 * 1024,
 });
 
