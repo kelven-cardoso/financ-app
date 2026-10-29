@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { ArrowLeft, Calculator, CheckCircle2, CircleDollarSign, Clock3, FileSearch, Pencil, Plus, RotateCcw } from 'lucide-react';
 import { useFinanc } from '../lib/estado';
 import { ir, voltar, useFolhas } from '../lib/navegacao';
-import { faturaEmFoco } from '../lib/financas';
+import { faturaEmFoco, previstosDoMes } from '../lib/financas';
 import { dataCurta, mesCurto, nomeMes, primeiraMaiuscula, reais } from '../lib/formato';
 import { Confirmar, Dinheiro, Medidor, Vazio } from '../ui/base';
 import { CartaoVisual } from '../ui/CartaoVisual';
@@ -37,6 +37,8 @@ export function CartaoDetalhe({ id }: { id: number }) {
   const fatura = cartao.faturas.find((f) => f.competencia === atual);
   const importada = snap.importacoes?.find((i) => i.cartao_id === cartao.id && i.competencia === atual);
   const itens = snap.lancamentos.filter((l) => l.metodo === 'credito' && l.cartao_id === cartao.id && l.competencia === atual);
+  // fixas no cartão que ainda vão cair nesta fatura (não somam no total até serem lançadas)
+  const fixasNoCartao = previstosDoMes(snap, atual, true).filter((p) => p.metodo === 'credito' && p.cartao_id === cartao.id);
   const usado = cartao.faturas[0]?.limite_usado_total ?? 0;
   const disponivel = cartao.faturas[0]?.limite_disponivel ?? null;
   const visiveis = cartao.faturas.filter((f) => f.competencia === atual || f.competencia >= cartao.competencia_atual || f.valor_fatura > 0.004 || f.itens > 0);
@@ -154,10 +156,10 @@ export function CartaoDetalhe({ id }: { id: number }) {
               <h2>Compras da fatura</h2>
               <span className="nota">{itens.length} {itens.length === 1 ? 'item' : 'itens'}</span>
             </div>
-            {itens.length === 0 ? (
+            {itens.length === 0 && fixasNoCartao.length === 0 ? (
               <div className="grupo"><Vazio titulo="Nenhuma compra lançada nesta fatura" texto={fatura?.valor_ajustado ? 'O total vem do valor informado.' : undefined} /></div>
             ) : (
-              <ListaPorDia lancamentos={itens} snap={snap} />
+              <ListaPorDia lancamentos={itens} previstos={fixasNoCartao} snap={snap} />
             )}
           </section>
 

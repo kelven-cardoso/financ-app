@@ -14,6 +14,7 @@ import { Ajustes } from './telas/Ajustes';
 import { Seguranca } from './telas/Seguranca';
 import { Fixas } from './telas/Fixas';
 import { Orcamentos } from './telas/Orcamentos';
+import { Categorias } from './telas/Categorias';
 import { Sincronizacao } from './telas/Sincronizacao';
 import { FormLancamento } from './formularios/Lancamento';
 
@@ -42,6 +43,7 @@ function Tela({ rota }: { rota: string }) {
   if (rota === '/ajustes/seguranca') return <Seguranca />;
   if (rota === '/ajustes/fixas') return <Fixas />;
   if (rota === '/ajustes/orcamentos') return <Orcamentos />;
+  if (rota === '/ajustes/categorias') return <Categorias />;
   if (rota === '/ajustes/sincronizacao') return <Sincronizacao />;
   return <Inicio />;
 }

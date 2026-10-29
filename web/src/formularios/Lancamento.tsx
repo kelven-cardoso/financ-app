@@ -2,11 +2,12 @@ import { useId, useMemo, useState, type FormEvent } from 'react';
 import { Trash2 } from 'lucide-react';
 import { useFinanc } from '../lib/estado';
 import {
-  beneficios, categoriasFrequentes, competenciaCredito, contasDeCaixa, corPadraoConta, faturaDatas, somarMesesData, sugestaoPorDescricao,
+  beneficios, competenciaCredito, contasDeCaixa, corPadraoConta, faturaDatas, somarMesesData, sugestaoPorDescricao,
 } from '../lib/financas';
 import { dataCurta, nomeMes, reais, somarDias } from '../lib/formato';
 import type { Lancamento, Metodo } from '../lib/tipos';
 import { CampoValor, CorpoFolha, RodapeFolha, Segmentado, useTorrada } from '../ui/base';
+import { SeletorCategoria } from '../ui/SeletorCategoria';
 
 type Meio = { tipo: 'cartao'; id: number } | { tipo: 'metodo'; metodo: Exclude<Metodo, 'credito' | 'vale'> } | { tipo: 'vale'; contaId: number };
 
@@ -48,7 +49,6 @@ export function FormLancamento({ fechar, lancamento, inicial }: Props) {
   const [valor, setValor] = useState<number>(lancamento?.valor ?? 0);
   const [descricao, setDescricao] = useState(lancamento?.descricao ?? '');
   const [categoria, setCategoria] = useState(lancamento?.categoria ?? '');
-  const [outraCategoria, setOutraCategoria] = useState(false);
   const [meio, setMeio] = useState<Meio>(meioInicial);
   const [contaId, setContaId] = useState<number | null>(lancamento?.conta_id ?? inicial?.conta_id ?? snap?.padrao.conta_id ?? null);
   const [data, setData] = useState(lancamento?.data ?? snap?.hoje ?? '');
@@ -72,7 +72,6 @@ export function FormLancamento({ fechar, lancamento, inicial }: Props) {
   }, [snap]);
 
   if (!snap) return null;
-  const cats = categoriasFrequentes(snap, tipo, 9);
   const contasCaixa = contasDeCaixa(snap);
   const vales = beneficios(snap);
   const cartao = meio.tipo === 'cartao' ? snap.cartoes.find((c) => c.id === meio.id) : undefined;
@@ -205,25 +204,8 @@ export function FormLancamento({ fechar, lancamento, inicial }: Props) {
           <datalist id={`${idDesc}-l`}>{descricoes.map((d) => <option key={d} value={d} />)}</datalist>
         </div>
 
-        <div className="campo">
-          <span className="rotulo">Categoria</span>
-          <div className="chips">
-            {cats.map((c) => (
-              <button key={c} type="button" className="chip" aria-pressed={categoria === c && !outraCategoria}
-                onClick={() => { setCategoria(c); setOutraCategoria(false); setTocou((t) => ({ ...t, categoria: true })); }}>
-                {c}
-              </button>
-            ))}
-            {categoria && !cats.includes(categoria) && !outraCategoria && (
-              <button type="button" className="chip" aria-pressed="true" onClick={() => setOutraCategoria(true)}>{categoria}</button>
-            )}
-            <button type="button" className="chip" aria-pressed={outraCategoria} onClick={() => setOutraCategoria(true)}>Outra</button>
-          </div>
-          {outraCategoria && (
-            <input className="entrada" aria-label="Nome da categoria" value={categoria} maxLength={60} autoFocus
-              onChange={(e) => { setCategoria(e.target.value); setTocou((t) => ({ ...t, categoria: true })); }} placeholder="Nome da categoria" />
-          )}
-        </div>
+        <SeletorCategoria snap={snap} tipo={tipo} valor={categoria} n={9}
+          aoMudar={(c) => { setCategoria(c); setTocou((t) => ({ ...t, categoria: true })); }} />
 
         {tipo === 'saida' && (
           <div className="campo">

@@ -3,7 +3,7 @@ import { api } from '../lib/api';
 import { useFinanc } from '../lib/estado';
 import { contasDeCaixa, corPadraoConta } from '../lib/financas';
 import { dataCurta, reais } from '../lib/formato';
-import type { Caixinha } from '../lib/tipos';
+import type { Caixinha, Snapshot } from '../lib/tipos';
 import { CampoDinheiro, CampoValor, CorpoFolha, Dinheiro, RodapeFolha, useTorrada } from '../ui/base';
 import { SeletorCor } from './Contas';
 
@@ -151,17 +151,83 @@ export function FormMovimentoCaixinha({ fechar, caixinha, acao }: { fechar: () =
   );
 }
 
-type Mov = { id: number; data: string; tipo: string; valor: number; conta: string | null; observacao: string | null };
+type Mov = { id: number; data: string; tipo: string; valor: number; conta: string | null; observacao: string | null; saldo_apos?: number; criado_em?: string };
+
+const NOMES_MOV: Record<string, string> = { aporte: 'Guardado', resgate: 'Resgate', rendimento: 'Rendimento', ajuste: 'Saldo informado' };
+
+/** movimentos da caixinha que vieram no retrato (funciona sem internet), do mais recente ao mais antigo */
+export function movimentosDaCaixinha(snap: Snapshot | null, caixinhaId: number): Mov[] | null {
+  if (!snap?.caixinha_movimentos) return null;
+  return snap.caixinha_movimentos.filter((m) => m.caixinha_id === caixinhaId);
+}
+
+function LinhaMov({ m, acao }: { m: Mov; acao?: React.ReactNode }) {
+  const sub = [dataCurta(m.data), m.conta, m.tipo === 'ajuste' || m.tipo === 'rendimento' ? 'diferença para o saldo anterior' : null, m.observacao]
+    .filter(Boolean).join(', ');
+  return (
+    <div className="linha sem-icone" style={{ gridTemplateColumns: '1fr auto' }}>
+      <span className="linha-texto">
+        <span className="linha-titulo" style={{ display: 'block' }}>{NOMES_MOV[m.tipo] ?? m.tipo}</span>
+        <span className="linha-sub duas" style={{ display: 'block' }}>{sub}</span>
+        {acao}
+      </span>
+      <span className="linha-valor">
+        <Dinheiro valor={m.valor} tipo={m.valor >= 0 ? 'entrada' : 'saida'} sinal />
+        {m.saldo_apos !== undefined && <small>saldo {reais(m.saldo_apos)}</small>}
+      </span>
+    </div>
+  );
+}
+
+/** os últimos movimentos, dentro da folha da caixinha */
+export function MovimentosRecentes({ caixinha, n = 4, verTudo }: { caixinha: Caixinha; n?: number; verTudo: () => void }) {
+  const { snap } = useFinanc();
+  const movs = movimentosDaCaixinha(snap, caixinha.id);
+  if (!movs) return null;
+  return (
+    <div className="caixinha-movs">
+      <div className="secao-cab" style={{ margin: '18px 2px 6px' }}>
+        <h2 style={{ fontSize: 15 }}>Últimos movimentos</h2>
+        {movs.length > n && <button type="button" className="link" onClick={verTudo}>Ver todos ({movs.length})</button>}
+      </div>
+      {movs.length === 0 ? <p className="nota" style={{ margin: '4px 2px' }}>Nenhum movimento ainda.</p> : (
+        <div className="lista-sim">{movs.slice(0, n).map((m) => <LinhaMov key={m.id} m={m} />)}</div>
+      )}
+    </div>
+  );
+}
 
 export function HistoricoCaixinha({ caixinha }: { caixinha: Caixinha }) {
-  const [movs, setMovs] = useState<Mov[] | null>(null);
+  const { snap, executar } = useFinanc();
+  const torrada = useTorrada();
+  const doRetrato = movimentosDaCaixinha(snap, caixinha.id);
+  const [buscados, setBuscados] = useState<Mov[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  const [desfazer, setDesfazer] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
   useEffect(() => {
+    if (doRetrato) return;
+    // retrato antigo, sem os movimentos: busca no servidor
     api<{ movimentos: Mov[] }>('GET', `/api/caixinhas/${caixinha.id}/historico`)
-      .then((r) => setMovs(r.movimentos))
+      .then((r) => setBuscados(r.movimentos))
       .catch((e) => setErro(e.semRede ? 'O histórico precisa de internet.' : e.message));
-  }, [caixinha.id]);
-  const nomes: Record<string, string> = { aporte: 'Guardado', resgate: 'Resgate', rendimento: 'Rendimento', ajuste: 'Ajuste de saldo' };
+  }, [caixinha.id, doRetrato]);
+  const movs = doRetrato ?? buscados;
+  // o último registrado pode ser desfeito (ex.: guardou o valor errado)
+  const ultimo = movs?.length ? [...movs].sort((a, b) => (b.criado_em ?? '').localeCompare(a.criado_em ?? '') || b.id - a.id)[0] : undefined;
+  const desfazerUltimo = async () => {
+    if (!ultimo) return;
+    setOcupado(true);
+    try {
+      await executar({ metodo: 'POST', caminho: `/api/caixinhas/${caixinha.id}/desfazer`, corpo: { movimento_id: ultimo.id }, rotulo: `Desfazer ${NOMES_MOV[ultimo.tipo] ?? ultimo.tipo}` });
+      torrada('Movimento desfeito');
+      setDesfazer(false);
+    } catch (e) {
+      torrada((e as Error).message, true);
+    } finally {
+      setOcupado(false);
+    }
+  };
   return (
     <CorpoFolha>
       {erro && <p className="nota">{erro}</p>}
@@ -170,13 +236,17 @@ export function HistoricoCaixinha({ caixinha }: { caixinha: Caixinha }) {
       {movs && movs.length > 0 && (
         <div className="lista-sim">
           {movs.map((m) => (
-            <div className="linha sem-icone" key={m.id} style={{ gridTemplateColumns: '1fr auto' }}>
-              <span className="linha-texto">
-                <span className="linha-titulo" style={{ display: 'block' }}>{nomes[m.tipo] ?? m.tipo}</span>
-                <span className="linha-sub" style={{ display: 'block' }}>{dataCurta(m.data)}{m.conta ? `, ${m.conta}` : ''}</span>
-              </span>
-              <span className="linha-valor"><Dinheiro valor={m.valor} tipo={m.valor >= 0 ? 'entrada' : 'saida'} sinal /></span>
-            </div>
+            <LinhaMov key={m.id} m={m} acao={m.id === ultimo?.id ? (
+              !desfazer ? (
+                <button type="button" className="link-peq" onClick={() => setDesfazer(true)}>Desfazer</button>
+              ) : (
+                <span className="confirma-peq">
+                  Desfazer este movimento?{' '}
+                  <button type="button" className="link-peq perigo" disabled={ocupado} onClick={desfazerUltimo}>Sim, desfazer</button>{' '}
+                  <button type="button" className="link-peq" onClick={() => setDesfazer(false)}>Não</button>
+                </span>
+              )
+            ) : undefined} />
           ))}
         </div>
       )}

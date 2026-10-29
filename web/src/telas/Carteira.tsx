@@ -8,7 +8,7 @@ import { Dinheiro, Medidor, Segmentado, Vazio } from '../ui/base';
 import { CartaoVisual } from '../ui/CartaoVisual';
 import { FormCartao } from '../formularios/Cartoes';
 import { FormConta, FormTransferencia } from '../formularios/Contas';
-import { FormCaixinha, FormMovimentoCaixinha, HistoricoCaixinha } from '../formularios/Caixinhas';
+import { FormCaixinha, FormMovimentoCaixinha, HistoricoCaixinha, MovimentosRecentes } from '../formularios/Caixinhas';
 
 function iniciais(nome: string) {
   return nome.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join('');
@@ -52,6 +52,7 @@ function AcoesCaixinha({ c, fechar }: { c: Caixinha; fechar: () => void }) {
           <span className="ic"><Settings2 /></span> Editar
         </button>
       </div>
+      <MovimentosRecentes caixinha={c} verTudo={() => proxima(`Histórico de ${c.nome}`, () => <HistoricoCaixinha caixinha={c} />)} />
     </div>
   );
 }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CalendarRange, ChevronRight, CloudCog, Download, Info, LogOut, MoonStar, ShieldCheck, Target } from 'lucide-react';
+import { CalendarRange, ChevronRight, CloudCog, Download, Info, LogOut, MoonStar, ShieldCheck, Tags, Target } from 'lucide-react';
 import { useFinanc } from '../lib/estado';
 import { ir, useFolhas } from '../lib/navegacao';
 import { preferencia, salvarPreferencia } from '../lib/local';
@@ -33,6 +33,7 @@ export function Ajustes() {
   const [tema, setTema] = useState(preferencia('tema', 'sistema'));
   const fixas = snap?.recorrentes.filter((r) => r.ativo).length ?? 0;
   const orc = snap?.orcamentos_cadastro.length ?? 0;
+  const cats = (snap?.categorias ?? []).filter((c) => c.id !== undefined && !c.oculta).length;
   const pend = fila.length;
   const inst = useInstalacao();
   return (
@@ -54,6 +55,7 @@ export function Ajustes() {
       <div className="grupo">
         <Item icone={<CalendarRange />} titulo="Contas e receitas fixas" sub={`${fixas} ativas`} aoClicar={() => ir('/ajustes/fixas')} />
         <Item icone={<Target />} titulo="Orçamentos" sub={orc ? `${orc} por mês` : 'Nenhum'} aoClicar={() => ir('/ajustes/orcamentos')} />
+        <Item icone={<Tags />} titulo="Categorias" sub={cats ? `${cats} categorias, ícones e nomes` : 'Nomes e ícones'} aoClicar={() => ir('/ajustes/categorias')} />
       </div>
       <section className="secao">
         <div className="grupo">

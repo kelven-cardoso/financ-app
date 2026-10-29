@@ -1,5 +1,5 @@
-import type { Cartao, Conta, Fatura, Lancamento, PainelMes, Snapshot } from './tipos';
-import { somarDias, somarMeses, NOME_METODO } from './formato';
+import type { Cartao, Categoria, Conta, Fatura, Lancamento, PainelMes, Previsto, Recorrente, Snapshot } from './tipos';
+import { mesCurto, NOME_METODO, reais, somarDias, somarMeses } from './formato';
 
 /** mesmo cálculo de financ.fn_data_no_mes: dia limitado ao último dia do mês */
 export function dataNoMes(mes: string, dia: number): string {
@@ -96,7 +96,7 @@ export function painelDoMes(snap: Snapshot, mes: string): PainelMes | undefined 
 }
 
 /** "Nubank", "Pix · PF", "Vale-alimentação" */
-export function meioDoLancamento(l: Lancamento, snap: Snapshot): string {
+export function meioDoLancamento(l: Pick<Lancamento, 'metodo' | 'cartao_id' | 'conta_id'>, snap: Snapshot): string {
   if (l.metodo === 'credito') return snap.cartoes.find((c) => c.id === l.cartao_id)?.nome ?? 'Crédito';
   const conta = snap.contas.find((c) => c.id === l.conta_id);
   if (l.metodo === 'vale') return conta?.nome ?? 'Vale';
@@ -104,7 +104,31 @@ export function meioDoLancamento(l: Lancamento, snap: Snapshot): string {
   return conta && snap.contas.filter((c) => c.tipo !== 'beneficio').length > 1 ? `${m}, ${conta.nome}` : m;
 }
 
-export type Vencimento = { data: string; titulo: string; valor: number; tipo: 'fatura' | 'fixa' | 'receita' | 'agendado'; ref?: number };
+export function meioDoPrevisto(p: Previsto, snap: Snapshot): string {
+  return meioDoLancamento(p, snap);
+}
+
+/** fixas e receitas fixas ainda não lançadas no mês (pela data; com porFatura, pela fatura em que caem) */
+export function previstosDoMes(snap: Snapshot, mes: string, porFatura = false): Previsto[] {
+  return (snap.previstos ?? []).filter((p) => (porFatura ? p.competencia : p.data.slice(0, 7)) === mes);
+}
+
+/** a ocorrência de uma fixa num mês: prevista (com o valor do mês) ou já lançada */
+export function ocorrenciaDoMes(snap: Snapshot, recorrenteId: number, mes: string): { previsto?: Previsto; lancamento?: Lancamento } {
+  const previsto = (snap.previstos ?? []).find((p) => p.recorrente_id === recorrenteId && p.mes === mes);
+  if (previsto) return { previsto };
+  const r = snap.recorrentes.find((x) => x.id === recorrenteId);
+  const lancamento = snap.lancamentos.find((l) => l.recorrente_id === recorrenteId && (
+    l.metodo === 'credito' && r ? l.competencia === competenciaDaOcorrencia(snap, r.dia_vencimento, mes, l.cartao_id) : l.competencia === mes));
+  return { lancamento };
+}
+
+function competenciaDaOcorrencia(snap: Snapshot, dia: number, mes: string, cartaoId: number | null): string {
+  const c = snap.cartoes.find((x) => x.id === cartaoId);
+  return c ? competenciaCredito(dataNoMes(mes, dia), c) : mes;
+}
+
+export type Vencimento = { data: string; titulo: string; valor: number; tipo: 'fatura' | 'fixa' | 'receita' | 'agendado'; ref?: number; mes?: string; atrasado?: boolean };
 
 /** o que vence ou cai nos próximos dias (faturas não pagas, fixas e receitas previstas, lançamentos com data futura) */
 export function proximosVencimentos(snap: Snapshot, dias = 15): Vencimento[] {
@@ -118,15 +142,24 @@ export function proximosVencimentos(snap: Snapshot, dias = 15): Vencimento[] {
       }
     }
   }
-  for (const r of snap.recorrentes) {
-    if (!r.ativo || contaBeneficio(snap, r.conta_id) || r.metodo === 'credito') continue;
-    for (const mes of [snap.mes, somarMeses(snap.mes, 1)]) {
-      if (r.inicio.slice(0, 7) > mes || (r.fim && r.fim.slice(0, 7) < mes)) continue;
-      const d = dataNoMes(mes, r.dia_vencimento);
-      if (d < hoje || d > limite) continue;
-      const lancado = snap.lancamentos.some((l) => l.recorrente_id === r.id && l.competencia === mes);
-      if (lancado) continue;
-      out.push({ data: d, titulo: r.descricao, valor: r.valor, tipo: r.tipo === 'entrada' ? 'receita' : 'fixa', ref: r.id });
+  if (snap.previstos) {
+    // fixas e receitas ainda não lançadas, já com o valor do mês (ajustado ou pulado)
+    for (const p of snap.previstos) {
+      if (p.metodo === 'credito' || contaBeneficio(snap, p.conta_id)) continue;
+      if (p.data > limite || (p.data < hoje && !p.atrasado)) continue;
+      out.push({ data: p.data < hoje ? hoje : p.data, titulo: p.descricao, valor: p.valor, tipo: p.tipo === 'entrada' ? 'receita' : 'fixa', ref: p.recorrente_id, mes: p.mes, atrasado: p.atrasado });
+    }
+  } else {
+    for (const r of snap.recorrentes) {
+      if (!r.ativo || contaBeneficio(snap, r.conta_id) || r.metodo === 'credito') continue;
+      for (const mes of [snap.mes, somarMeses(snap.mes, 1)]) {
+        if (r.inicio.slice(0, 7) > mes || (r.fim && r.fim.slice(0, 7) < mes)) continue;
+        const d = dataNoMes(mes, r.dia_vencimento);
+        if (d < hoje || d > limite) continue;
+        const lancado = snap.lancamentos.some((l) => l.recorrente_id === r.id && l.competencia === mes);
+        if (lancado) continue;
+        out.push({ data: d, titulo: r.descricao, valor: r.valor, tipo: r.tipo === 'entrada' ? 'receita' : 'fixa', ref: r.id, mes });
+      }
     }
   }
   for (const l of snap.lancamentos) {
@@ -145,13 +178,24 @@ export function beneficios(snap: Snapshot): Conta[] {
   return snap.contas.filter((c) => c.tipo === 'beneficio');
 }
 
+const usoDoTipo = (c: Categoria, tipo: 'saida' | 'entrada') =>
+  (tipo === 'saida' ? c.n_saida : c.n_entrada) ?? (c.tipo === tipo ? c.n : 0);
+
+/** categorias que servem para o tipo (cadastradas e não ocultas), as mais usadas primeiro */
+export function categoriasDoTipo(snap: Snapshot, tipo: 'saida' | 'entrada'): string[] {
+  const lista = (snap.categorias ?? []).filter((c) => !c.oculta && (c.tipo === tipo || c.tipo === 'ambos' || usoDoTipo(c, tipo) > 0));
+  lista.sort((a, b) => usoDoTipo(b, tipo) - usoDoTipo(a, tipo) || (a.ordem ?? 999) - (b.ordem ?? 999) || a.nome.localeCompare(b.nome, 'pt-BR'));
+  return [...new Set(lista.map((c) => c.nome))];
+}
+
 /** categorias mais usadas para o tipo, para os atalhos do formulário */
 export function categoriasFrequentes(snap: Snapshot, tipo: 'saida' | 'entrada', n = 8): string[] {
-  const base = tipo === 'saida'
-    ? ['Alimentação', 'Restaurante', 'Transporte', 'Mercado', 'Moradia', 'Saúde', 'Lazer', 'Compras', 'Assinaturas', 'Educação', 'Outros']
-    : ['Salário', 'Freela', 'Renda', 'Reembolso', 'Outros'];
-  const usadas = snap.categorias.filter((c) => c.tipo === tipo).map((c) => c.nome);
-  const todas = [...new Set([...usadas, ...base])];
+  // retrato antigo (antes do cadastro de categorias): completa com as padrão
+  const cadastradas = (snap.categorias ?? []).some((c) => c.id !== undefined);
+  const base = cadastradas ? [] : tipo === 'saida'
+    ? ['Alimentação', 'Restaurante', 'Transporte', 'Moradia', 'Saúde', 'Lazer', 'Compras', 'Assinaturas', 'Educação', 'Outros']
+    : ['Salário', 'Renda', 'Renda extra', 'Reembolso', 'Outros'];
+  const todas = [...new Set([...categoriasDoTipo(snap, tipo), ...base])];
   return todas.slice(0, n);
 }
 
@@ -197,4 +241,37 @@ export const CORES_CARTAO = ['#6D28D9', '#1F2937', '#0F766E', '#B91C1C', '#C2410
 export function corPadraoConta(c: Pick<Conta, 'tipo' | 'cor'>): string {
   if (c.cor) return c.cor;
   return c.tipo === 'pf' ? '#6D28D9' : c.tipo === 'pj' ? '#0F766E' : c.tipo === 'beneficio' ? '#C2410C' : '#334155';
+}
+
+export type Ocorrencia = {
+  mes: string;
+  data: string;
+  valor: number;
+  estado: 'prevista' | 'lancada' | 'pulada';
+  ajustado: boolean;
+  atrasado?: boolean;
+  lancamento?: Lancamento;
+};
+
+/** os próximos meses de uma fixa: prevista (com o valor do mês), já lançada ou pulada */
+export function proximasOcorrencias(snap: Snapshot, r: Recorrente, n = 6): Ocorrencia[] {
+  const out: Ocorrencia[] = [];
+  const inicio = r.inicio.slice(0, 7) > snap.mes ? r.inicio.slice(0, 7) : snap.mes;
+  for (let i = 0; i < n; i++) {
+    const mes = somarMeses(inicio, i);
+    if (r.fim && mes > r.fim.slice(0, 7)) break;
+    const data = dataNoMes(mes, r.dia_vencimento);
+    const aj = r.ajustes?.find((a) => a.mes === mes);
+    const { previsto, lancamento } = ocorrenciaDoMes(snap, r.id, mes);
+    if (lancamento) out.push({ mes, data: lancamento.data, valor: lancamento.valor, estado: 'lancada', ajustado: false, lancamento });
+    else if (aj?.pular) out.push({ mes, data, valor: 0, estado: 'pulada', ajustado: true });
+    else if (previsto) out.push({ mes, data, valor: previsto.valor, estado: 'prevista', ajustado: previsto.ajustado, atrasado: previsto.atrasado });
+    else if (r.ativo) out.push({ mes, data, valor: aj?.valor ?? r.valor, estado: 'prevista', ajustado: aj?.valor != null && aj.valor !== r.valor });
+  }
+  return out;
+}
+
+/** "dez R$ 80,00; jan pulada" */
+export function resumoAjustes(r: Recorrente): string {
+  return (r.ajustes ?? []).map((a) => `${mesCurto(a.mes)} ${a.pular ? 'pulada' : reais(a.valor)}`).join('; ');
 }

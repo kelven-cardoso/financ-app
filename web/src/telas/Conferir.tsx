@@ -96,9 +96,9 @@ export function Conferir({ cartaoId }: { cartaoId: number }) {
 
   const categorias = useMemo(() => {
     if (!snap) return [];
-    const base = categoriasFrequentes(snap, 'saida', 40);
+    const base = categoriasFrequentes(snap, 'saida', 80);
     const sug = conc?.itens.map((i) => i.categoria) ?? [];
-    return [...new Set([...base, ...sug, 'Impostos e taxas', 'Vestuário', 'Casa', 'Outros'])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
+    return [...new Set([...base, ...sug, 'Outros'])].sort((a, b) => a.localeCompare(b, 'pt-BR'));
   }, [snap, conc]);
 
   if (!snap) return null;
@@ -303,11 +303,21 @@ export function Conferir({ cartaoId }: { cartaoId: number }) {
   );
 }
 
+const NOVA = '__nova__';
+
 function ItemFaltando({ item, marcado, categoria, categorias, aoMarcar, aoCategoria }: {
   item: ItemBanco; marcado: boolean; categoria: string; categorias: string[];
   aoMarcar: (v: boolean) => void; aoCategoria: (c: string) => void;
 }) {
   const id = `item-${item.id}`;
+  const [nova, setNova] = useState(false);
+  const [texto, setTexto] = useState('');
+  const confirmarNova = () => {
+    const nome = texto.trim().replace(/\s+/g, ' ');
+    if (nome) aoCategoria(nome.charAt(0).toUpperCase() + nome.slice(1));
+    setNova(false);
+    setTexto('');
+  };
   return (
     <div className="linha conc-item">
       <input id={id} type="checkbox" className="conc-check" checked={marcado} onChange={(e) => aoMarcar(e.target.checked)} />
@@ -322,9 +332,17 @@ function ItemFaltando({ item, marcado, categoria, categorias, aoMarcar, aoCatego
       </label>
       <span className="linha-valor conc-direita">
         <Dinheiro valor={item.valor} tipo={item.tipo === 'estorno' ? 'entrada' : undefined} sinal={item.tipo === 'estorno'} />
-        <select className="conc-cat" aria-label={`Categoria de ${item.descricao_limpa}`} value={categoria} onChange={(e) => aoCategoria(e.target.value)}>
-          {(categorias.includes(categoria) ? categorias : [categoria, ...categorias]).map((c) => <option key={c} value={c}>{primeiraMaiuscula(c)}</option>)}
-        </select>
+        {nova ? (
+          <input className="conc-cat conc-cat-nova" aria-label={`Nova categoria para ${item.descricao_limpa}`} autoFocus maxLength={60}
+            placeholder="Nova categoria" value={texto} onChange={(e) => setTexto(e.target.value)} onBlur={confirmarNova}
+            onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); confirmarNova(); } if (e.key === 'Escape') { setNova(false); setTexto(''); } }} />
+        ) : (
+          <select className="conc-cat" aria-label={`Categoria de ${item.descricao_limpa}`} value={categoria}
+            onChange={(e) => (e.target.value === NOVA ? setNova(true) : aoCategoria(e.target.value))}>
+            {(categorias.includes(categoria) ? categorias : [categoria, ...categorias]).map((c) => <option key={c} value={c}>{primeiraMaiuscula(c)}</option>)}
+            <option value={NOVA}>Nova categoria…</option>
+          </select>
+        )}
       </span>
     </div>
   );

@@ -9,7 +9,7 @@ import { snapshot } from '../snapshot.js';
 const FUNCOES = new Set([
   'fn_registrar_lancamento', 'fn_registrar_parcelamento', 'fn_editar_lancamento', 'fn_gerenciar_fatura',
   'fn_gerenciar_cartao', 'fn_gerenciar_conta', 'fn_saldo', 'fn_movimento_conta', 'fn_caixinha',
-  'fn_gerenciar_recorrente', 'fn_gerenciar_orcamento',
+  'fn_gerenciar_recorrente', 'fn_gerenciar_orcamento', 'fn_gerenciar_categoria',
 ]);
 
 type Json = Record<string, unknown>;
@@ -20,7 +20,7 @@ async function chamar(tx: Tx, fn: string, params: Json): Promise<Json> {
   const limpo = Object.fromEntries(Object.entries(params).filter(([, v]) => v !== undefined && v !== null));
   const [r] = await tx`SELECT financ.${tx(fn)}(${tx.json(limpo as never)}) AS r`;
   const res = (r as unknown as { r: Json }).r;
-  if (!res || res.ok === false) throw new ErroApi(422, String(res?.erro ?? 'Não foi possível concluir'), 'regra');
+  if (!res || res.ok === false) throw new ErroApi(422, String(res?.erro ?? 'Não foi possível concluir'), String(res?.codigo ?? 'regra'));
   return res;
 }
 
@@ -333,6 +333,56 @@ export async function rotasDados(app: FastifyInstance): Promise<void> {
   app.delete('/api/recorrentes/:id', (req, reply) => {
     const id = idParam(req);
     return mutacao(req, reply, (tx) => chamar(tx, 'fn_gerenciar_recorrente', { acao: 'excluir', id }));
+  });
+
+  // um mês só: valor diferente, pular, voltar ao normal ou "já paguei / já recebi"
+  const ACOES_MES = { ajustar: 'ajustar_mes', pular: 'pular_mes', desfazer: 'desfazer_mes', lancar: 'lancar_mes' } as const;
+  app.post('/api/recorrentes/:id/mes', (req, reply) => {
+    const id = idParam(req);
+    const b = corpo(z.object({
+      mes: zMes,
+      acao: z.enum(['ajustar', 'pular', 'desfazer', 'lancar']),
+      valor: zValor.optional(),
+      data: zData.optional(),
+      conta_id: z.number().int().positive().nullish(),
+      observacao: z.string().trim().max(200).optional(),
+    }), req);
+    if (b.acao === 'ajustar' && !b.valor) throw new ErroApi(400, 'Informe o valor deste mês.');
+    return mutacao(req, reply, (tx) =>
+      chamar(tx, 'fn_gerenciar_recorrente', {
+        acao: ACOES_MES[b.acao], id, mes: b.mes, valor: b.valor, data: b.data, conta: ref(b.conta_id), observacao: b.observacao,
+      }),
+    );
+  });
+
+  // ---------------------------------------------------------------- categorias
+  const zIcone = z.string().regex(/^[a-z0-9-]{1,30}$/, 'ícone inválido');
+  const zTipoCategoria = z.enum(['saida', 'entrada', 'ambos']);
+
+  app.post('/api/categorias', (req, reply) => {
+    const b = corpo(z.object({ nome: zTexto(60), icone: zIcone.nullish(), tipo: zTipoCategoria.optional() }), req);
+    return mutacao(req, reply, (tx) => chamar(tx, 'fn_gerenciar_categoria', { acao: 'criar', nome: b.nome, icone: b.icone ?? undefined, tipo: b.tipo }));
+  });
+
+  app.patch('/api/categorias/:id', (req, reply) => {
+    const id = idParam(req);
+    const b = corpo(z.object({
+      nome: zTexto(60).optional(), icone: zIcone.nullable().optional(), tipo: zTipoCategoria.optional(),
+      oculta: z.boolean().optional(), juntar: z.boolean().optional(),
+    }), req);
+    return mutacao(req, reply, (tx) =>
+      chamar(tx, 'fn_gerenciar_categoria', {
+        acao: 'editar', id, novo_nome: b.nome, icone: b.icone === undefined ? undefined : b.icone ?? '', tipo: b.tipo,
+        oculta: bool(b.oculta), juntar: bool(b.juntar),
+      }),
+    );
+  });
+
+  // excluir: se estiver em uso, os lançamentos vão para mover_para
+  app.post('/api/categorias/:id/excluir', (req, reply) => {
+    const id = idParam(req);
+    const b = corpo(z.object({ mover_para: zTexto(60).optional() }), req);
+    return mutacao(req, reply, (tx) => chamar(tx, 'fn_gerenciar_categoria', { acao: 'excluir', id, mover_para: b.mover_para }));
   });
 
   // ---------------------------------------------------------------- orçamentos

@@ -24,6 +24,9 @@ lançado aqui aparece lá, e vice-versa.
 | `PORT` | Porta HTTP (padrão 3000) |
 
 O app cria o próprio schema `financ_app` (login, digitais, sessões, eventos) ao iniciar.
+Também aplica, uma vez, as migrações do schema `financ` que vêm com ele (`server/src/sql/`,
+versões 1013+ registradas em `financ_app.migracoes`): conferência da fatura do banco (13 e 14) e
+previstos, valor da fixa por mês, categorias cadastradas e correção do total informado da fatura (15).
 
 ## Desenvolvimento
 

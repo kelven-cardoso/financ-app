@@ -3,11 +3,13 @@ import { AlertTriangle, CalendarClock, ChevronDown, ChevronLeft, ChevronRight, C
 import { useFinanc } from '../lib/estado';
 import { ir, useFolhas } from '../lib/navegacao';
 import { beneficios, corPadraoConta, faturaDoMes, faturaEmFoco, gastosPorCategoria, painelDoMes, proximosVencimentos } from '../lib/financas';
-import { dataCurta, mesCurto, nomeMes, primeiraMaiuscula, quandoRelativo, reaisCompacto, somarMeses } from '../lib/formato';
+import { dataCurta, nomeMes, primeiraMaiuscula, quandoRelativo, reaisCompacto, somarMeses } from '../lib/formato';
 import type { PainelMes, Snapshot } from '../lib/tipos';
 import { Dinheiro, Medidor, Vazio } from '../ui/base';
 import { CartaoVisual } from '../ui/CartaoVisual';
 import { LinhaLancamento } from '../ui/Lancamentos';
+import { Evolucao } from '../ui/Evolucao';
+import { FolhaPrevisto } from '../formularios/Previsto';
 import { FormSaldo } from '../formularios/Contas';
 
 type LinhaEq = { op: '' | '−' | '+'; rotulo: string; nota?: string; valor: number; itens?: { descricao: string; valor: number; nota?: string }[] };
@@ -141,37 +143,6 @@ function Equacao({ snap, p }: { snap: Snapshot; p: PainelMes }) {
   );
 }
 
-function ProximosMeses({ snap }: { snap: Snapshot }) {
-  const meses = snap.painel.filter((p) => p.mes >= snap.mes).slice(0, 6);
-  const valores = meses.map((p) => p.saldo_livre ?? 0);
-  const maxPos = Math.max(0, ...valores);
-  const minNeg = Math.min(0, ...valores);
-  const span = maxPos - minNeg || 1;
-  const area = 96, padT = 22, padB = minNeg < 0 ? 22 : 6;
-  const y0 = padT + (area * maxPos) / span;
-  return (
-    <div className="grupo" role="img" aria-label={`Sobra prevista por mês: ${meses.map((p, i) => `${nomeMes(p.mes)} ${reaisCompacto(valores[i])}`).join('; ')}`}>
-      <div className="colunas" style={{ height: padT + area + padB }}>
-        <span className="colunas-base" style={{ top: y0 }} />
-        {meses.map((p, i) => {
-          const v = valores[i];
-          const h = Math.max(2, (area * Math.abs(v)) / span);
-          const esquerda = `${((i + 0.5) / meses.length) * 100}%`;
-          return (
-            <span key={p.mes} title={`${nomeMes(p.mes)}: ${reaisCompacto(v)}`}>
-              <span className={`coluna-barra ${v < 0 ? 'neg' : ''}`} style={{ left: esquerda, top: v >= 0 ? y0 - h : y0, height: h }} />
-              <span className="coluna-val" style={{ left: esquerda, top: v >= 0 ? y0 - h - 17 : y0 + h + 3 }}>{reaisCompacto(v)}</span>
-            </span>
-          );
-        })}
-      </div>
-      <div className="colunas-rotulos">
-        {meses.map((p) => <span key={p.mes}>{mesCurto(p.mes)}</span>)}
-      </div>
-    </div>
-  );
-}
-
 function GastosCategoria({ snap, mes }: { snap: Snapshot; mes: string }) {
   const lista = gastosPorCategoria(snap, mes);
   if (!lista.length) return <div className="grupo"><Vazio titulo="Nenhum gasto neste mês" /></div>;
@@ -198,6 +169,7 @@ function GastosCategoria({ snap, mes }: { snap: Snapshot; mes: string }) {
 
 export function Inicio() {
   const { snap, online, sincronizando, sincronizar, fila, erroSync, perfil, bloquearAgora } = useFinanc();
+  const { abrir } = useFolhas();
   const [mes, setMes] = useState<string | null>(null);
   const atual = mes ?? snap?.mes ?? '';
   const painel = useMemo(() => (snap ? painelDoMes(snap, atual) : undefined), [snap, atual]);
@@ -299,11 +271,15 @@ export function Inicio() {
             </section>
           )}
 
-          <section className="secao" aria-label="Próximos meses">
+          <section className="secao" aria-label="Evolução mensal">
             <div className="secao-cab">
-              <h2>Sobra prevista nos próximos meses</h2>
+              <h2>Evolução mensal</h2>
+              <span className="nota">receitas, despesas e saldo</span>
             </div>
-            <ProximosMeses snap={snap} />
+            <Evolucao snap={snap} selecionado={atual} aoEscolher={(m) => {
+              setMes(m);
+              if (window.innerWidth < 960) window.scrollTo({ top: 0, behavior: 'smooth' });
+            }} />
           </section>
         </div>
 
@@ -317,7 +293,11 @@ export function Inicio() {
                   type="button"
                   className="linha"
                   key={i}
-                  onClick={() => v.tipo === 'fatura' && v.ref ? ir(`/carteira/cartao/${v.ref}`) : v.tipo === 'fixa' || v.tipo === 'receita' ? ir('/ajustes/fixas') : ir('/extrato')}
+                  onClick={() => {
+                    if (v.tipo === 'fatura' && v.ref) ir(`/carteira/cartao/${v.ref}`);
+                    else if ((v.tipo === 'fixa' || v.tipo === 'receita') && v.ref && v.mes) abrir(v.titulo, (f) => <FolhaPrevisto fechar={f} recorrenteId={v.ref!} mes={v.mes!} />);
+                    else ir('/extrato');
+                  }}
                 >
                   <span className="linha-icone num" style={{ fontSize: 13, fontWeight: 700, flexDirection: 'column', lineHeight: 1 }}>
                     {v.data.slice(8, 10)}
@@ -325,7 +305,7 @@ export function Inicio() {
                   <span className="linha-texto">
                     <span className="linha-titulo" style={{ display: 'block' }}>{v.titulo}</span>
                     <span className="linha-sub" style={{ display: 'block' }}>
-                      {primeiraMaiuscula(quandoRelativo(v.data, snap.hoje))}{v.tipo === 'fatura' ? ', fatura' : v.tipo === 'receita' ? ', a receber' : ', conta fixa'}
+                      {v.atrasado ? 'Atrasada' : primeiraMaiuscula(quandoRelativo(v.data, snap.hoje))}{v.tipo === 'fatura' ? ', fatura' : v.tipo === 'receita' ? ', a receber' : v.tipo === 'agendado' ? ', agendado' : ', conta fixa'}
                     </span>
                   </span>
                   <span className="linha-valor"><Dinheiro valor={v.valor} tipo={v.tipo === 'receita' ? 'entrada' : 'saida'} sinal={v.tipo === 'receita'} /></span>

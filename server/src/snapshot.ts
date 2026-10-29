@@ -5,7 +5,8 @@ type Executor = { unsafe: typeof sql.unsafe } & typeof sql;
 
 /**
  * Tudo que o app precisa para funcionar, inclusive sem internet: contas, cartões e faturas,
- * caixinhas, fixas, orçamentos, painel de 12 meses e os lançamentos dos últimos 12 meses (mais os futuros).
+ * caixinhas (com os movimentos), fixas e o que ainda está previsto, categorias, orçamentos, painel de 12 meses
+ * e os lançamentos dos últimos 12 meses (mais os futuros).
  * Os números derivados (saldo livre, faturas, a pagar) vêm das mesmas funções SQL que o agente usa.
  */
 export async function snapshot(db: Executor = sql as Executor): Promise<{ dados: Record<string, unknown>; etag: string }> {
@@ -40,7 +41,8 @@ export async function snapshot(db: Executor = sql as Executor): Promise<{ dados:
       'recorrentes', COALESCE((
          SELECT jsonb_agg(financ.fn_recorrente_json(r.id) || jsonb_build_object(
                   'cartao_id', r.cartao_id, 'conta_id', r.conta_id,
-                  'lancado_mes', EXISTS (SELECT 1 FROM financ.lancamentos l WHERE l.recorrente_id = r.id AND l.competencia = h.mes))
+                  'lancado_mes', financ.fn_recorrente_lancada(r.id, h.mes),
+                  'valor_mes', financ.fn_recorrente_valor_mes(r.id, h.mes))
                 ORDER BY r.ativo DESC, r.tipo DESC, r.dia_vencimento, r.id)
            FROM financ.recorrentes r), '[]'::jsonb),
       'orcamentos', financ.fn_orcamentos_mes(h.hoje),
@@ -70,9 +72,18 @@ export async function snapshot(db: Executor = sql as Executor): Promise<{ dados:
          SELECT jsonb_agg(jsonb_build_object('id', i.id, 'cartao_id', i.cartao_id, 'competencia', to_char(i.competencia, 'YYYY-MM'),
                   'total', i.total, 'origem', i.origem, 'atualizado_em', i.atualizado_em) ORDER BY i.competencia DESC)
            FROM financ.fatura_importacoes i WHERE i.competencia >= (h.mes - interval '12 months')::date), '[]'::jsonb),
-      'categorias', COALESCE((
-         SELECT jsonb_agg(jsonb_build_object('nome', x.categoria, 'tipo', x.tipo, 'n', x.n, 'ultimo', x.ultimo) ORDER BY x.n DESC, x.categoria)
-           FROM (SELECT categoria, tipo, count(*) AS n, max(data) AS ultimo FROM financ.lancamentos GROUP BY categoria, tipo) x), '[]'::jsonb)
+      'categorias', financ.fn_categorias_json(true),
+      -- fixas e receitas fixas que ainda não viraram lançamento (do mês atual até 6 meses à frente)
+      'previstos', financ.fn_previstos(h.mes, (h.mes + interval '6 months')::date),
+      'caixinha_movimentos', COALESCE((
+         SELECT jsonb_agg(jsonb_build_object('id', x.id, 'caixinha_id', x.caixinha_id, 'data', x.data, 'tipo', x.tipo, 'valor', x.valor,
+                  'conta', x.conta, 'observacao', x.observacao, 'saldo_apos', x.saldo_apos, 'criado_em', x.criado_em)
+                ORDER BY x.data DESC, x.id DESC)
+           FROM (SELECT m.id, m.caixinha_id, m.data, m.tipo, m.valor, m.observacao, m.criado_em,
+                        (SELECT ct.nome FROM financ.contas ct WHERE ct.id = m.conta_id) AS conta,
+                        SUM(m.valor) OVER (PARTITION BY m.caixinha_id ORDER BY m.data, m.id) AS saldo_apos
+                   FROM financ.caixinha_movimentos m JOIN financ.caixinhas cx ON cx.id = m.caixinha_id AND cx.ativo) x
+          WHERE x.data >= (h.mes - interval '24 months')::date), '[]'::jsonb)
     ) AS snap
     FROM h`;
   const dados = r.snap;

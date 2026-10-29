@@ -87,7 +87,10 @@ export type Movimento = {
   fatura_id: number | null;
 };
 
-export type Item = { id?: number; descricao: string; valor: number; data?: string; dia?: number; tipo?: string; metodo?: string; conta?: string };
+export type Item = {
+  id?: number; descricao: string; valor: number; data?: string; dia?: number; tipo?: string; metodo?: string; conta?: string;
+  recorrente_id?: number; valor_padrao?: number; ajustado?: boolean;
+};
 
 export type PainelMes = {
   mes: string;
@@ -171,6 +174,59 @@ export type Recorrente = {
   fim: string | null;
   ativo: boolean;
   lancado_mes: boolean;
+  /** valor deste mês (null = pulada neste mês) */
+  valor_mes?: number | null;
+  /** meses com valor diferente ou pulados, do mês atual em diante */
+  ajustes?: AjusteRecorrente[];
+};
+
+export type AjusteRecorrente = { mes: string; valor: number | null; pular: boolean; observacao: string | null };
+
+/** fixa ou receita fixa que ainda não virou lançamento (do mês atual até 6 meses à frente) */
+export type Previsto = {
+  recorrente_id: number;
+  mes: string;
+  data: string;
+  descricao: string;
+  categoria: string;
+  valor: number;
+  valor_padrao: number;
+  ajustado: boolean;
+  tipo: 'saida' | 'entrada';
+  metodo: Metodo | string;
+  cartao_id: number | null;
+  conta_id: number | null;
+  confirmar: boolean;
+  /** fatura em que cai (cartão) ou o próprio mês */
+  competencia: string;
+  atrasado: boolean;
+  pendencia_id: number | null;
+};
+
+export type Categoria = {
+  id?: number;
+  nome: string;
+  icone?: string | null;
+  tipo: 'saida' | 'entrada' | 'ambos' | string;
+  oculta?: boolean;
+  ordem?: number | null;
+  n: number;
+  n_saida?: number;
+  n_entrada?: number;
+  n_fixas?: number;
+  ultimo: string | null;
+};
+
+export type MovCaixinha = {
+  id: number;
+  caixinha_id: number;
+  data: string;
+  tipo: 'aporte' | 'resgate' | 'rendimento' | 'ajuste';
+  valor: number;
+  conta: string | null;
+  observacao: string | null;
+  saldo_apos: number;
+  criado_em: string;
 };
 
 export type Orcamento = {
@@ -201,7 +257,9 @@ export type Snapshot = {
   lancamentos: Lancamento[];
   movimentos: Movimento[];
   saldos_informados: { conta_id: number; data: string; saldo: number }[];
-  categorias: { nome: string; tipo: string; n: number; ultimo: string }[];
+  categorias: Categoria[];
+  previstos?: Previsto[];
+  caixinha_movimentos?: MovCaixinha[];
   importacoes?: { id: number; cartao_id: number; competencia: string; total: number | null; origem: 'email' | 'app'; atualizado_em: string }[];
 };
 
