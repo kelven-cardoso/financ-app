@@ -3,7 +3,7 @@ import { ArrowLeft, CheckCircle2, Fingerprint, KeyRound, Laptop, Pencil, Smartph
 import { api, ErroApi } from '../lib/api';
 import { useFinanc } from '../lib/estado';
 import { voltar, useFolhas } from '../lib/navegacao';
-import { cadastrarDigital, descreverNavegador, digitalDisponivel, nomeDoAparelho } from '../lib/digital';
+import { cadastrarDigital, descreverNavegador, digitalDisponivel, erroDigital, nomeDoAparelho } from '../lib/digital';
 import { dataHora } from '../lib/formato';
 import { Confirmar, CorpoFolha, RodapeFolha, useTorrada } from '../ui/base';
 
@@ -53,7 +53,7 @@ function FormNomeDigital({ fechar, aoConcluir }: { fechar: () => void; aoConclui
       fechar();
     } catch (err) {
       const n = (err as { name?: string }).name;
-      setErro(n === 'NotAllowedError' ? 'O cadastro da digital foi cancelado.' : n === 'InvalidStateError' ? 'Este aparelho já tem uma digital cadastrada aqui.' : (err as Error).message);
+      setErro(n === 'InvalidStateError' ? 'Este aparelho já tem uma digital cadastrada aqui.' : erroDigital(err, true));
       setOcupado(false);
     }
   };

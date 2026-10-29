@@ -61,6 +61,11 @@ const MIGRACOES: { versao: number; sql: string }[] = [
       );
     `,
   },
+  {
+    // passkeys não descobríveis (alguns gerenciadores do Android) precisam ir na lista ao entrar
+    versao: 2,
+    sql: `ALTER TABLE financ_app.passkeys ADD COLUMN IF NOT EXISTS descobrivel boolean;`,
+  },
 ];
 
 export async function migrar(): Promise<void> {

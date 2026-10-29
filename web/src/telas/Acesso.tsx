@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Fingerprint, KeyRound, LockKeyhole, WifiOff } from 'lucide-react';
 import { useFinanc } from '../lib/estado';
-import { digitalDisponivel } from '../lib/digital';
+import { digitalDisponivel, erroDigital } from '../lib/digital';
 
 function Marca() {
   return (
@@ -13,9 +13,7 @@ function Marca() {
 }
 
 function mensagemDigital(e: unknown): string {
-  const nome = (e as { name?: string })?.name;
-  if (nome === 'NotAllowedError' || nome === 'AbortError') return 'A leitura da digital foi cancelada.';
-  return (e as Error)?.message || 'Não foi possível usar a digital.';
+  return erroDigital(e);
 }
 
 export function Iniciando() {
@@ -157,6 +155,14 @@ export function Bloqueado({ digitais, offline }: { digitais: number; offline: bo
     digitalDisponivel().then(setTemDigital);
   }, []);
 
+  // a internet voltou: recarrega para liberar o desbloqueio com senha
+  useEffect(() => {
+    if (!offline) return;
+    const voltou = () => location.reload();
+    window.addEventListener('online', voltou);
+    return () => window.removeEventListener('online', voltou);
+  }, [offline]);
+
   const digital = async (automatico = false) => {
     setErro(null);
     setOcupado(true);
@@ -199,7 +205,7 @@ export function Bloqueado({ digitais, offline }: { digitais: number; offline: bo
             <span className="digital-btn" aria-hidden="true"><LockKeyhole /></span>
           )}
           <h1>Financ bloqueado</h1>
-          <p>{podeDigital && !usarSenha ? 'Toque para desbloquear com a digital.' : offline ? 'Sem conexão: o desbloqueio com senha precisa de internet.' : 'Digite a senha para continuar.'}</p>
+          <p>{podeDigital && !usarSenha ? 'Toque para desbloquear com a digital.' : offline ? 'Sem internet, só a digital desbloqueia (ative em Ajustes › Segurança). Com senha, conecte-se e tente de novo.' : 'Digite a senha para continuar.'}</p>
         </div>
         {erro && <div className="erro-form" role="alert">{erro}</div>}
         {(usarSenha || !podeDigital) && !offline && (
@@ -210,6 +216,9 @@ export function Bloqueado({ digitais, offline }: { digitais: number; offline: bo
             </div>
             <button className="btn cheio" disabled={ocupado || !senha}>Desbloquear</button>
           </form>
+        )}
+        {offline && (usarSenha || !podeDigital) && (
+          <button type="button" className="btn cheio" onClick={() => location.reload()}>Tentar de novo</button>
         )}
         {podeDigital && (
           <button type="button" className="btn fantasma" onClick={() => setUsarSenha(!usarSenha)}>

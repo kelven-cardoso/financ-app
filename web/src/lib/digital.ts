@@ -24,6 +24,22 @@ export async function cadastrarDigital(nome: string): Promise<void> {
   await api('POST', '/api/auth/digital/registro', { resposta, nome });
 }
 
+/** traduz os erros do navegador/Android para algo que dá para resolver */
+export function erroDigital(e: unknown, cadastro = false): string {
+  const nome = (e as { name?: string })?.name;
+  const msg = String((e as Error)?.message ?? '');
+  if (/credential manager|unknown error/i.test(msg) || nome === 'UnknownError') {
+    return 'O Android não conseguiu falar com o gerenciador de senhas. Confira: bloqueio de tela ativo (PIN ou digital); '
+      + 'Configurações › Senhas e contas (ou Google › Preenchimento automático) com o Google como serviço de senhas e passkeys; '
+      + 'Google Play Services e Chrome atualizados. Depois tente de novo.';
+  }
+  if (nome === 'NotAllowedError' || nome === 'AbortError') return cadastro ? 'O cadastro da digital foi cancelado.' : 'A leitura da digital foi cancelada.';
+  if (nome === 'InvalidStateError') return 'Este aparelho já tem uma digital cadastrada aqui.';
+  if (nome === 'NotSupportedError') return 'Este navegador não oferece passkeys. Use o Chrome atualizado.';
+  if (nome === 'SecurityError') return 'O navegador recusou o endereço do app. Abra pelo app instalado ou por financ.kelvencardoso.tech.';
+  return msg || 'Não foi possível usar a digital.';
+}
+
 export async function buscarChavesLocais(): Promise<ChaveLocal[]> {
   return api<ChaveLocal[]>('GET', '/api/seguranca/chaves-locais');
 }

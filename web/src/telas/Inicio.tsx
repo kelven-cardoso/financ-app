@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, CalendarClock, ChevronDown, ChevronLeft, ChevronRight, CloudOff, Lock, RefreshCw } from 'lucide-react';
 import { useFinanc } from '../lib/estado';
 import { ir, useFolhas } from '../lib/navegacao';
-import { beneficios, corPadraoConta, faturaEmFoco, gastosPorCategoria, painelDoMes, proximosVencimentos } from '../lib/financas';
+import { beneficios, corPadraoConta, faturaDoMes, faturaEmFoco, gastosPorCategoria, painelDoMes, proximosVencimentos } from '../lib/financas';
 import { dataCurta, mesCurto, nomeMes, primeiraMaiuscula, quandoRelativo, reaisCompacto, somarMeses } from '../lib/formato';
 import type { PainelMes, Snapshot } from '../lib/tipos';
 import { Dinheiro, Medidor, Vazio } from '../ui/base';
@@ -256,7 +256,8 @@ export function Inicio() {
               </div>
               <div className="trilha-cartoes">
                 {cartoes.map((c) => {
-                  const f = faturaEmFoco(c);
+                  // no mês atual mostra a fatura em foco; ao navegar, a fatura daquele mês
+                  const f = atual === snap.mes ? faturaEmFoco(c) : faturaDoMes(c, atual);
                   const fechada = f?.status === 'fechada';
                   return (
                     <div key={c.id}>
@@ -266,13 +267,13 @@ export function Inicio() {
                         tipo="Crédito"
                         final={c.final}
                         bandeira={c.bandeira}
-                        rotuloValor={f ? `Fatura de ${nomeMes(f.competencia)}` : 'Fatura'}
+                        rotuloValor={`Fatura de ${nomeMes(f?.competencia ?? atual)}`}
                         valor={f?.valor_fatura ?? 0}
-                        aoClicar={() => ir(`/carteira/cartao/${c.id}`)}
-                        rotuloAcessivel={`${c.nome}: fatura de ${nomeMes(f?.competencia ?? snap.mes)}, ${reaisCompacto(f?.valor_fatura ?? 0)}`}
+                        aoClicar={() => ir(`/carteira/cartao/${c.id}${f ? `?mes=${f.competencia}` : ''}`)}
+                        rotuloAcessivel={`${c.nome}: fatura de ${nomeMes(f?.competencia ?? atual)}, ${reaisCompacto(f?.valor_fatura ?? 0)}`}
                       />
                       <div className="cartao-legenda">
-                        <span>{f ? `${fechada ? 'Fechada, vence' : 'Vence'} ${quandoRelativo(f.vencimento, snap.hoje)}` : ''}</span>
+                        <span>{f ? (f.paga ? `Paga` : `${fechada ? 'Fechada, vence' : 'Vence'} ${quandoRelativo(f.vencimento, snap.hoje)}`) : 'Sem fatura neste mês'}</span>
                         <span>{f && c.limite ? ((f.limite_disponivel ?? 0) < 0 ? `Acima do limite ${reaisCompacto(-(f.limite_disponivel ?? 0))}` : `Disponível ${reaisCompacto(f.limite_disponivel ?? 0)}`) : ''}</span>
                       </div>
                     </div>

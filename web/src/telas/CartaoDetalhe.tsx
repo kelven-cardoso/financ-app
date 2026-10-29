@@ -14,7 +14,10 @@ export function CartaoDetalhe({ id }: { id: number }) {
   const { snap, executar } = useFinanc();
   const { abrir } = useFolhas();
   const cartao = snap?.cartoes.find((c) => c.id === id);
-  const [comp, setComp] = useState<string | null>(null);
+  const [comp, setComp] = useState<string | null>(() => {
+    const m = new URLSearchParams(location.search).get('mes');
+    return m && /^\d{4}-\d{2}$/.test(m) ? m : null;
+  });
 
   if (!snap) return null;
   if (!cartao) {
@@ -35,7 +38,7 @@ export function CartaoDetalhe({ id }: { id: number }) {
   const itens = snap.lancamentos.filter((l) => l.metodo === 'credito' && l.cartao_id === cartao.id && l.competencia === atual);
   const usado = cartao.faturas[0]?.limite_usado_total ?? 0;
   const disponivel = cartao.faturas[0]?.limite_disponivel ?? null;
-  const visiveis = cartao.faturas.filter((f) => f.competencia >= cartao.competencia_atual || f.valor_fatura > 0.004 || f.itens > 0);
+  const visiveis = cartao.faturas.filter((f) => f.competencia === atual || f.competencia >= cartao.competencia_atual || f.valor_fatura > 0.004 || f.itens > 0);
 
   return (
     <>

@@ -49,9 +49,10 @@ export async function opcoesRegistro(sessaoId: string) {
     userID: new Uint8Array(Buffer.from(u.webauthn_user_id, 'base64url')),
     attestationType: 'none',
     excludeCredentials: existentes.map((p) => ({ id: p.id, transports: p.transports })),
-    authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
+    // opções mínimas: "required" e as dicas de aparelho fazem o Gerenciador de Credenciais
+    // de alguns Android falhar com "unknown error"; o aparelho cria a passkey dele mesmo assim
+    authenticatorSelection: { residentKey: 'preferred', userVerification: 'required' },
     supportedAlgorithmIDs: [-7, -257],
-    preferredAuthenticatorType: 'localDevice',
   });
   guardar(opcoes.challenge, { fluxo: 'registro', sessaoId });
   return opcoes;
@@ -72,21 +73,28 @@ export async function verificarRegistro(sessaoId: string, resposta: Registration
   }
   if (!v.verified) throw new ErroApi(400, 'Não foi possível confirmar a digital. Tente de novo.', 'digital_invalida');
   const { credential, credentialDeviceType, credentialBackedUp } = v.registrationInfo;
+  const rk = resposta.clientExtensionResults?.credProps?.rk;
   await sql`
-    INSERT INTO financ_app.passkeys (id, chave_publica, contador, transports, tipo_dispositivo, sincronizada, nome)
+    INSERT INTO financ_app.passkeys (id, chave_publica, contador, transports, tipo_dispositivo, sincronizada, nome, descobrivel)
     VALUES (${credential.id}, ${Buffer.from(credential.publicKey)}, ${credential.counter}, ${credential.transports ?? []},
-            ${credentialDeviceType}, ${credentialBackedUp}, ${nome})`;
+            ${credentialDeviceType}, ${credentialBackedUp}, ${nome}, ${typeof rk === 'boolean' ? rk : null})`;
   return credential.id;
 }
 
 export async function opcoesAutenticacao(fluxo: 'entrar' | 'desbloquear', sessaoId: string | null, passkeyPreferida: string | null) {
-  const todas = await sql<{ id: string; transports: string[] }[]>`SELECT id, transports FROM financ_app.passkeys ORDER BY ultimo_uso DESC NULLS LAST`;
+  const todas = await sql<{ id: string; transports: string[]; descobrivel: boolean | null }[]>`
+    SELECT id, transports, descobrivel FROM financ_app.passkeys ORDER BY ultimo_uso DESC NULLS LAST`;
   if (todas.length === 0) throw new ErroApi(409, 'Nenhuma digital cadastrada ainda. Entre com a senha e ative em Segurança.', 'sem_digital');
   const lista = passkeyPreferida && todas.some((p) => p.id === passkeyPreferida) ? todas.filter((p) => p.id === passkeyPreferida) : todas;
   const opcoes = await generateAuthenticationOptions({
     rpID: cfg.rpId,
-    // para entrar (sem sessão) a lista vai vazia: o aparelho oferece a passkey dele, e os ids não ficam expostos
-    allowCredentials: fluxo === 'entrar' ? [] : lista.map((p) => ({ id: p.id, transports: p.transports })),
+    // para entrar (sem sessão) a lista vai vazia: o aparelho oferece a passkey dele, e os ids não ficam expostos.
+    // Se alguma passkey não for descobrível (ou não se sabe), vão todas na lista: uma lista não vazia
+    // restringe o aparelho às passkeys dela.
+    allowCredentials:
+      fluxo === 'entrar' && todas.every((p) => p.descobrivel === true)
+        ? []
+        : (fluxo === 'entrar' ? todas : lista).map((p) => ({ id: p.id, transports: p.transports })),
     userVerification: 'required',
   });
   guardar(opcoes.challenge, { fluxo, sessaoId });

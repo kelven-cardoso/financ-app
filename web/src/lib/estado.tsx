@@ -254,9 +254,11 @@ export function ProvedorFinanc({ children }: { children: ReactNode }) {
         setOnline(false);
         if (!s) {
           setFase({ tipo: 'entrar', configurado: true, digitais: p?.digitais ?? 0, semRede: true });
-        } else if (p?.bloqueio_min) {
+        } else if (p?.bloqueio_min && Date.now() - ultimaAtividade() > p.bloqueio_min * 60000) {
+          // só bloqueia se passou do prazo de inatividade, igual ao que o servidor faria
           setFase({ tipo: 'bloqueado', digitais: p.digitais, offline: true });
         } else {
+          marcarAtividade();
           setFase({ tipo: 'pronto' });
           setErroSync('Sem conexão. Mostrando os dados salvos neste aparelho.');
         }
