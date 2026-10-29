@@ -21,7 +21,10 @@ const TTL = 5 * 60 * 1000;
 function guardar(challenge: string, d: Omit<Desafio, 'expira'>): void {
   const agora = Date.now();
   for (const [k, v] of desafios) if (v.expira < agora) desafios.delete(k);
-  if (desafios.size > 200) desafios.clear();
+  for (const k of desafios.keys()) {
+    if (desafios.size < 200) break;
+    desafios.delete(k);
+  }
   desafios.set(challenge, { ...d, expira: agora + TTL });
 }
 
@@ -82,7 +85,8 @@ export async function opcoesAutenticacao(fluxo: 'entrar' | 'desbloquear', sessao
   const lista = passkeyPreferida && todas.some((p) => p.id === passkeyPreferida) ? todas.filter((p) => p.id === passkeyPreferida) : todas;
   const opcoes = await generateAuthenticationOptions({
     rpID: cfg.rpId,
-    allowCredentials: lista.map((p) => ({ id: p.id, transports: p.transports })),
+    // para entrar (sem sessão) a lista vai vazia: o aparelho oferece a passkey dele, e os ids não ficam expostos
+    allowCredentials: fluxo === 'entrar' ? [] : lista.map((p) => ({ id: p.id, transports: p.transports })),
     userVerification: 'required',
   });
   guardar(opcoes.challenge, { fluxo, sessaoId });

@@ -37,8 +37,12 @@ export async function rotasAuth(app: FastifyInstance): Promise<void> {
 
   app.post('/api/auth/setup', limiteAuth, async (req, reply) => {
     const { token, senha } = corpo(z.object({ token: z.string().min(16).max(200), senha: z.string().min(1).max(200) }), req);
+    const ate = await senhaBloqueadaAte();
+    if (ate) throw new ErroApi(429, `Muitas tentativas. Tente de novo às ${horaSP(ate)}.`, 'muitas_tentativas');
     const [u] = await sql<{ setup_token_hash: string | null }[]>`SELECT setup_token_hash FROM financ_app.usuario WHERE id = 1`;
-    if (!cfg.setupToken || !comparaSegredo(token, cfg.setupToken) || u.setup_token_hash === sha256(token)) {
+    // o token do Easypanel precisa ser longo (difícil de adivinhar); um curto desativa o link
+    if (cfg.setupToken.length < 24 || !comparaSegredo(token, cfg.setupToken) || u.setup_token_hash === sha256(token)) {
+      await registrarFalhaSenha();
       await evento('senha_criada', false, req);
       throw new ErroApi(403, 'Este link de configuração não vale mais. Para criar uma nova senha, troque o SETUP_TOKEN no Easypanel.', 'setup_invalido');
     }
@@ -52,7 +56,7 @@ export async function rotasAuth(app: FastifyInstance): Promise<void> {
     // criar a senha pelo link também serve de recuperação: encerra todas as sessões abertas
     await sql`UPDATE financ_app.sessoes SET revogada_em = now() WHERE revogada_em IS NULL`;
     await evento('senha_criada', true, req);
-    await criarSessao(req, reply, { metodo: 'setup' });
+    await criarSessao(req, reply, { metodo: 'setup', bloqueioMin: cfg.bloqueioSenhaMin });
     return { ok: true };
   });
 
@@ -68,7 +72,7 @@ export async function rotasAuth(app: FastifyInstance): Promise<void> {
     }
     await zerarFalhasSenha();
     await revogarSessaoAtual(req);
-    await criarSessao(req, reply, { metodo: 'senha' });
+    await criarSessao(req, reply, { metodo: 'senha', bloqueioMin: cfg.bloqueioSenhaMin });
     await evento('entrada_senha', true, req);
     return { ok: true };
   });
@@ -151,8 +155,8 @@ export async function rotasAuth(app: FastifyInstance): Promise<void> {
     await sql`
       UPDATE financ_app.sessoes
          SET passkey_id = ${id},
-             bloqueio_min = COALESCE(bloqueio_min, ${cfg.bloqueioPadraoMin}::int),
-             desbloqueado_ate = now() + make_interval(mins => COALESCE(bloqueio_min, ${cfg.bloqueioPadraoMin}::int))
+             bloqueio_min = CASE WHEN bloqueio_min IS NULL OR bloqueio_min = ${cfg.bloqueioSenhaMin}::int THEN ${cfg.bloqueioPadraoMin}::int ELSE bloqueio_min END,
+             desbloqueado_ate = now() + make_interval(mins => CASE WHEN bloqueio_min IS NULL OR bloqueio_min = ${cfg.bloqueioSenhaMin}::int THEN ${cfg.bloqueioPadraoMin}::int ELSE bloqueio_min END)
        WHERE id = ${s.id}`;
     await evento('digital_adicionada', true, req, { aparelho: nome });
     return { ok: true, id };

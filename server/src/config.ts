@@ -27,5 +27,6 @@ export const cfg = {
   pastaEstatica: process.env.STATIC_DIR ?? path.join(aqui, 'public'),
   sessaoDias: 30,
   bloqueioPadraoMin: 5,
+  bloqueioSenhaMin: 15,
   versao: process.env.APP_VERSION ?? 'dev',
 };
