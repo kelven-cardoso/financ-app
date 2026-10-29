@@ -117,15 +117,10 @@ export function previstosDoMes(snap: Snapshot, mes: string, porFatura = false): 
 export function ocorrenciaDoMes(snap: Snapshot, recorrenteId: number, mes: string): { previsto?: Previsto; lancamento?: Lancamento } {
   const previsto = (snap.previstos ?? []).find((p) => p.recorrente_id === recorrenteId && p.mes === mes);
   if (previsto) return { previsto };
-  const r = snap.recorrentes.find((x) => x.id === recorrenteId);
+  // mesma regra de financ.fn_recorrente_lancamento_mes: no cartão vale o mês da cobrança; fora dele, a competência
   const lancamento = snap.lancamentos.find((l) => l.recorrente_id === recorrenteId && (
-    l.metodo === 'credito' && r ? l.competencia === competenciaDaOcorrencia(snap, r.dia_vencimento, mes, l.cartao_id) : l.competencia === mes));
+    l.metodo === 'credito' ? l.data.slice(0, 7) === mes : l.competencia === mes));
   return { lancamento };
-}
-
-function competenciaDaOcorrencia(snap: Snapshot, dia: number, mes: string, cartaoId: number | null): string {
-  const c = snap.cartoes.find((x) => x.id === cartaoId);
-  return c ? competenciaCredito(dataNoMes(mes, dia), c) : mes;
 }
 
 export type Vencimento = { data: string; titulo: string; valor: number; tipo: 'fatura' | 'fixa' | 'receita' | 'agendado'; ref?: number; mes?: string; atrasado?: boolean };

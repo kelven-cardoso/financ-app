@@ -67,8 +67,9 @@ function FormCategoria({ fechar, c, tipoInicial }: { fechar: () => void; c?: Cat
         const corpo: Record<string, unknown> = { icone, tipo, oculta: !visivel };
         if (nome.trim() !== c.nome) corpo.nome = nome.trim();
         if (juntar) corpo.juntar = true;
-        const r = await executar<{ acao?: string; para?: string; movidos?: number }>({ metodo: 'PATCH', caminho: `/api/categorias/${c.id}`, corpo, rotulo: `Categoria ${c.nome}` });
-        torrada(r.resultado?.acao === 'juntar' ? `${c.nome} juntada em ${r.resultado.para}` : r.resultado?.movidos ? `Renomeada em ${r.resultado.movidos} lançamentos` : 'Categoria salva');
+        const r = await executar<{ acao?: string; para?: string; movidos?: number; aviso?: string | null }>({ metodo: 'PATCH', caminho: `/api/categorias/${c.id}`, corpo, rotulo: `Categoria ${c.nome}` });
+        const feito = r.resultado?.acao === 'juntar' ? `${c.nome} juntada em ${r.resultado.para}.` : r.resultado?.movidos ? `Renomeada em ${r.resultado.movidos} lançamentos.` : 'Categoria salva.';
+        torrada(r.resultado?.aviso ? `${feito} ${r.resultado.aviso}` : feito);
       } else {
         await executar({ metodo: 'POST', caminho: '/api/categorias', corpo: { nome: nome.trim(), icone, tipo }, rotulo: `Nova categoria ${nome}` });
         torrada('Categoria criada');
@@ -90,8 +91,9 @@ function FormCategoria({ fechar, c, tipoInicial }: { fechar: () => void; c?: Cat
     if (emUso && !destino) return setErro('Escolha para qual categoria mover os lançamentos.');
     setOcupado(true);
     try {
-      await executar({ metodo: 'POST', caminho: `/api/categorias/${c.id}/excluir`, corpo: { mover_para: emUso ? destino : undefined }, rotulo: `Excluir ${c.nome}` });
-      torrada(emUso ? `${c.nome} excluída; lançamentos em ${destino}` : `${c.nome} excluída`);
+      const r = await executar<{ aviso?: string | null }>({ metodo: 'POST', caminho: `/api/categorias/${c.id}/excluir`, corpo: { mover_para: emUso ? destino : undefined }, rotulo: `Excluir ${c.nome}` });
+      const feito = emUso ? `${c.nome} excluída; lançamentos em ${destino}.` : `${c.nome} excluída.`;
+      torrada(r.resultado?.aviso ? `${feito} ${r.resultado.aviso}` : feito);
       fechar();
     } catch (err) {
       setErro((err as Error).message);
@@ -113,7 +115,7 @@ function FormCategoria({ fechar, c, tipoInicial }: { fechar: () => void; c?: Cat
         )}
         <div className="campo">
           <label htmlFor={id}>Nome</label>
-          <input id={id} className="entrada" value={nome} maxLength={60} required autoFocus={!c}
+          <input id={id} className="entrada" value={nome} maxLength={60} required autoFocus={!c} readOnly={!!c && normalizar(c.nome) === 'outros'}
             onChange={(e) => { setNome(e.target.value); setJuntarCom(null); }} placeholder="Ex.: Jogos, Academia, Farmácia" />
           {c && nome.trim() && nome.trim() !== c.nome && emUso > 0 && (
             <span className="dica">Os {emUso} {emUso === 1 ? 'item' : 'itens'} desta categoria passam a usar o nome novo.</span>

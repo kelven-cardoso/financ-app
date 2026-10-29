@@ -89,7 +89,8 @@ export function ProvedorTorradas({ children }: { children: ReactNode }) {
   const mostrar = useCallback((texto: string, erro = false) => {
     window.clearTimeout(timer.current);
     setT({ id: Date.now(), texto, erro });
-    timer.current = window.setTimeout(() => setT(null), erro ? 5200 : 2600);
+    // texto longo fica mais tempo na tela
+    timer.current = window.setTimeout(() => setT(null), Math.max(erro ? 5200 : 2600, texto.length * 65));
   }, []);
   return (
     <CtxTorrada.Provider value={mostrar}>

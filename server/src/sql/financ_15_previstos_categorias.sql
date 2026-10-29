@@ -46,14 +46,19 @@ CREATE OR REPLACE FUNCTION financ.fn_recorrente_valor_mes(p_id integer, p_mes da
    WHERE r.id = p_id
 $$;
 
--- a ocorrência do mês já virou lançamento? (no cartão, o lançamento fica na fatura em que cai o dia do vencimento)
+-- lançamento da ocorrência do mês (o mês do vencimento). No cartão a cobrança cai no dia do vencimento,
+-- então vale o mês da data (a fatura pode mudar na conferência ou se o cartão mudar); fora do cartão vale a
+-- competência (é a conta daquele mês, mesmo paga em outro dia)
+CREATE OR REPLACE FUNCTION financ.fn_recorrente_lancamento_mes(p_id integer, p_mes date) RETURNS integer LANGUAGE sql STABLE AS $$
+  SELECT l.id FROM financ.lancamentos l
+   WHERE l.recorrente_id = p_id
+     AND CASE WHEN l.metodo = 'credito' THEN financ.fn_mes(l.data) = financ.fn_mes(p_mes)
+              ELSE l.competencia = financ.fn_mes(p_mes) END
+   ORDER BY l.id DESC LIMIT 1
+$$;
+
 CREATE OR REPLACE FUNCTION financ.fn_recorrente_lancada(p_id integer, p_mes date) RETURNS boolean LANGUAGE sql STABLE AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM financ.recorrentes r JOIN financ.lancamentos l ON l.recorrente_id = r.id
-     WHERE r.id = p_id
-       AND l.competencia = CASE WHEN l.metodo = 'credito' AND l.cartao_id IS NOT NULL
-                                THEN financ.fn_competencia_credito(financ.fn_data_no_mes(financ.fn_mes(p_mes), r.dia_vencimento), l.cartao_id)
-                                ELSE financ.fn_mes(p_mes) END)
+  SELECT financ.fn_recorrente_lancamento_mes(p_id, p_mes) IS NOT NULL
 $$;
 
 -- ============================================================== 3) previstos (fixas e receitas fixas ainda não lançadas)
@@ -91,58 +96,70 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_categorias_nome ON financ.categorias (finan
 
 -- "jogos  online" -> "Jogos online" (só ajusta a primeira letra quando veio tudo minúsculo)
 CREATE OR REPLACE FUNCTION financ.fn_categoria_nome(p text) RETURNS text LANGUAGE sql IMMUTABLE AS $$
-  SELECT CASE WHEN t IS NULL OR t = '' THEN NULL
+  SELECT CASE WHEN t = '' THEN NULL
               WHEN t = lower(t) THEN upper(left(t, 1)) || substr(t, 2)
               ELSE t END
-    FROM (SELECT left(regexp_replace(trim(COALESCE(p, '')), '\s+', ' ', 'g'), 60) AS t) x
+    FROM (SELECT btrim(left(btrim(regexp_replace(COALESCE(p, ''), '\s+', ' ', 'g')), 60)) AS t) x
 $$;
 
--- categorias padrão (as que o assistente usa) + as que já existem nos lançamentos
-INSERT INTO financ.categorias (nome, icone, tipo, ordem)
-SELECT x.nome, x.icone, x.tipo, x.ordem FROM (VALUES
-  ('Alimentação', 'cesta', 'saida', 1), ('Restaurante', 'talheres', 'saida', 2), ('Transporte', 'carro', 'saida', 3),
-  ('Moradia', 'casa', 'saida', 4), ('Saúde', 'saude', 'saida', 5), ('Lazer', 'lazer', 'saida', 6),
-  ('Assinaturas', 'assinatura', 'saida', 7), ('Compras', 'sacola', 'saida', 8), ('Educação', 'educacao', 'saida', 9),
-  ('Vestuário', 'roupa', 'saida', 10), ('Casa', 'sofa', 'saida', 11), ('Eletrônicos', 'eletronico', 'saida', 12),
-  ('Pets', 'pet', 'saida', 13), ('Presentes', 'presente', 'saida', 14), ('Cuidados pessoais', 'cuidados', 'saida', 15),
-  ('Investimentos', 'investimento', 'saida', 16), ('Impostos e taxas', 'imposto', 'saida', 17), ('Família', 'familia', 'saida', 18),
-  ('Outros', 'outros', 'ambos', 99),
-  ('Salário', 'salario', 'entrada', 1), ('Renda', 'salario', 'entrada', 2), ('Renda extra', 'trabalho', 'entrada', 3),
-  ('Reembolso', 'reembolso', 'entrada', 4), ('Benefício', 'vale', 'entrada', 5)
-) AS x(nome, icone, tipo, ordem)
-ON CONFLICT DO NOTHING;
+-- categorias padrão (as que o assistente usa) + as que já existem nos lançamentos.
+-- Só quando a tabela nasce vazia: rodar de novo não traz de volta as que foram apagadas ou renomeadas.
+-- Estorno no cartão (entrada no crédito) conta como da categoria do gasto, não como "entrada".
+DO $seed$
+BEGIN
+  IF EXISTS (SELECT 1 FROM financ.categorias) THEN RETURN; END IF;
 
-INSERT INTO financ.categorias (nome, tipo)
-SELECT DISTINCT ON (financ.fn_norm(u.categoria)) financ.fn_categoria_nome(u.categoria),
-       CASE WHEN bool_or(u.tipo = 'saida') OVER w AND bool_or(u.tipo = 'entrada') OVER w THEN 'ambos'
-            WHEN bool_or(u.tipo = 'entrada') OVER w THEN 'entrada' ELSE 'saida' END
-  FROM (SELECT categoria, tipo FROM financ.lancamentos
-        UNION ALL SELECT categoria, tipo FROM financ.recorrentes
-        UNION ALL SELECT categoria, 'saida' FROM financ.parcelamentos) u
- WHERE financ.fn_categoria_nome(u.categoria) IS NOT NULL
-WINDOW w AS (PARTITION BY financ.fn_norm(u.categoria))
- ORDER BY financ.fn_norm(u.categoria), u.categoria
-ON CONFLICT DO NOTHING;
+  INSERT INTO financ.categorias (nome, icone, tipo, ordem)
+  SELECT x.nome, x.icone, x.tipo, x.ordem FROM (VALUES
+    ('Alimentação', 'cesta', 'saida', 1), ('Restaurante', 'talheres', 'saida', 2), ('Transporte', 'carro', 'saida', 3),
+    ('Moradia', 'casa', 'saida', 4), ('Saúde', 'saude', 'saida', 5), ('Lazer', 'lazer', 'saida', 6),
+    ('Assinaturas', 'assinatura', 'saida', 7), ('Compras', 'sacola', 'saida', 8), ('Educação', 'educacao', 'saida', 9),
+    ('Vestuário', 'roupa', 'saida', 10), ('Casa', 'sofa', 'saida', 11), ('Eletrônicos', 'eletronico', 'saida', 12),
+    ('Pets', 'pet', 'saida', 13), ('Presentes', 'presente', 'saida', 14), ('Cuidados pessoais', 'cuidados', 'saida', 15),
+    ('Investimentos', 'investimento', 'saida', 16), ('Impostos e taxas', 'imposto', 'saida', 17), ('Família', 'familia', 'saida', 18),
+    ('Outros', 'outros', 'ambos', 99),
+    ('Salário', 'salario', 'entrada', 1), ('Renda', 'salario', 'entrada', 2), ('Renda extra', 'trabalho', 'entrada', 3),
+    ('Reembolso', 'reembolso', 'entrada', 4), ('Benefício', 'vale', 'entrada', 5)
+  ) AS x(nome, icone, tipo, ordem)
+  ON CONFLICT DO NOTHING;
 
--- categoria usada como entrada e saída vira "ambos"
-UPDATE financ.categorias c SET tipo = 'ambos'
- WHERE c.tipo <> 'ambos'
-   AND EXISTS (SELECT 1 FROM financ.lancamentos l WHERE financ.fn_norm(l.categoria) = financ.fn_norm(c.nome) AND l.tipo <> c.tipo);
+  INSERT INTO financ.categorias (nome, tipo)
+  SELECT DISTINCT ON (financ.fn_norm(financ.fn_categoria_nome(u.categoria))) financ.fn_categoria_nome(u.categoria),
+         CASE WHEN bool_or(u.tipo = 'saida') OVER w AND bool_or(u.tipo = 'entrada') OVER w THEN 'ambos'
+              WHEN bool_or(u.tipo = 'entrada') OVER w THEN 'entrada' ELSE 'saida' END
+    FROM (SELECT categoria, CASE WHEN tipo = 'entrada' AND metodo <> 'credito' THEN 'entrada' ELSE 'saida' END AS tipo FROM financ.lancamentos
+          UNION ALL SELECT categoria, tipo FROM financ.recorrentes
+          UNION ALL SELECT categoria, 'saida' FROM financ.parcelamentos) u
+   WHERE financ.fn_categoria_nome(u.categoria) IS NOT NULL
+  WINDOW w AS (PARTITION BY financ.fn_norm(financ.fn_categoria_nome(u.categoria)))
+   ORDER BY financ.fn_norm(financ.fn_categoria_nome(u.categoria)), u.categoria
+  ON CONFLICT DO NOTHING;
+
+  -- categoria padrão usada também do outro lado vira "ambos"
+  UPDATE financ.categorias c SET tipo = 'ambos'
+   WHERE c.tipo <> 'ambos'
+     AND EXISTS (SELECT 1 FROM financ.lancamentos l
+                  WHERE financ.fn_norm(l.categoria) = financ.fn_norm(c.nome)
+                    AND CASE WHEN l.tipo = 'entrada' AND l.metodo <> 'credito' THEN 'entrada' ELSE 'saida' END <> c.tipo);
+END
+$seed$;
 
 -- todo lançamento/fixa/parcelamento usa a grafia cadastrada; categoria nova entra no cadastro sozinha
 CREATE OR REPLACE FUNCTION financ.tg_categoria() RETURNS trigger LANGUAGE plpgsql AS $$
-DECLARE v_nome text; v_tipo text := COALESCE(to_jsonb(NEW)->>'tipo', 'saida'); v_cad text;
+DECLARE j jsonb := to_jsonb(NEW); v_limpo text; v_nome text; v_cad text;
+  -- estorno no cartão (entrada no crédito) é da categoria do gasto: não transforma a categoria em "entrada"
+  v_tipo text := CASE WHEN j->>'tipo' = 'entrada' AND COALESCE(j->>'metodo', '') <> 'credito' THEN 'entrada' ELSE 'saida' END;
 BEGIN
-  IF NEW.categoria IS NULL OR financ.fn_norm(NEW.categoria) IS NULL THEN RETURN NEW; END IF;
-  IF v_tipo NOT IN ('saida','entrada') THEN v_tipo := 'saida'; END IF;
-  SELECT nome, tipo INTO v_nome, v_cad FROM financ.categorias WHERE financ.fn_norm(nome) = financ.fn_norm(NEW.categoria);
+  IF NEW.categoria IS NULL THEN RETURN NEW; END IF;
+  v_limpo := COALESCE(financ.fn_categoria_nome(NEW.categoria), 'Outros');  -- só espaços: Outros
+  SELECT nome, tipo INTO v_nome, v_cad FROM financ.categorias WHERE financ.fn_norm(nome) = financ.fn_norm(v_limpo);
   IF v_nome IS NULL THEN
-    v_nome := financ.fn_categoria_nome(NEW.categoria);
-    INSERT INTO financ.categorias (nome, tipo) VALUES (v_nome, v_tipo) ON CONFLICT DO NOTHING;
+    INSERT INTO financ.categorias (nome, tipo) VALUES (v_limpo, v_tipo) ON CONFLICT DO NOTHING;
+    SELECT nome INTO v_nome FROM financ.categorias WHERE financ.fn_norm(nome) = financ.fn_norm(v_limpo);
   ELSIF v_cad <> 'ambos' AND v_cad <> v_tipo THEN
     UPDATE financ.categorias SET tipo = 'ambos' WHERE financ.fn_norm(nome) = financ.fn_norm(v_nome);
   END IF;
-  NEW.categoria := v_nome;
+  NEW.categoria := COALESCE(v_nome, v_limpo);
   RETURN NEW;
 END $$;
 
@@ -165,17 +182,17 @@ BEGIN
   UPDATE financ.recorrentes SET categoria = p_para WHERE financ.fn_norm(categoria) = k AND categoria IS DISTINCT FROM p_para;
   UPDATE financ.parcelamentos SET categoria = p_para WHERE financ.fn_norm(categoria) = k AND categoria IS DISTINCT FROM p_para;
   UPDATE financ.fatura_itens SET categoria = p_para WHERE financ.fn_norm(categoria) = k AND categoria IS DISTINCT FROM p_para;
-  -- orçamento com o nome da categoria: renomeia se não colidir; senão passa a olhar a categoria nova
-  UPDATE financ.orcamentos o SET categoria = p_para
-   WHERE financ.fn_norm(o.categoria) = k
-     AND NOT EXISTS (SELECT 1 FROM financ.orcamentos o2 WHERE o2.id <> o.id AND financ.fn_norm(o2.categoria) = financ.fn_norm(p_para));
-  UPDATE financ.orcamentos o SET categorias = ARRAY[p_para]
-   WHERE financ.fn_norm(o.categoria) = k AND (o.categorias IS NULL OR o.categorias = '{}');
+  -- orçamento com o nome da categoria: renomeia junto (com os valores de um mês só). Se já existe orçamento
+  -- com o nome novo (juntando duas categorias que tinham orçamento), o antigo fica como está e o app avisa.
+  IF NOT EXISTS (SELECT 1 FROM financ.orcamentos o2 WHERE financ.fn_norm(o2.categoria) = financ.fn_norm(p_para) AND financ.fn_norm(o2.categoria) <> k) THEN
+    UPDATE financ.orcamentos SET categoria = p_para WHERE financ.fn_norm(categoria) = k;
+    UPDATE financ.orcamento_mes o SET categoria = p_para
+     WHERE financ.fn_norm(o.categoria) = k
+       AND NOT EXISTS (SELECT 1 FROM financ.orcamento_mes o2 WHERE o2.id <> o.id AND o2.competencia = o.competencia AND financ.fn_norm(o2.categoria) = financ.fn_norm(p_para));
+  END IF;
+  -- orçamentos que juntam várias categorias
   UPDATE financ.orcamentos SET categorias = ARRAY(SELECT DISTINCT CASE WHEN financ.fn_norm(x) = k THEN p_para ELSE x END FROM unnest(categorias) x)
    WHERE EXISTS (SELECT 1 FROM unnest(categorias) x WHERE financ.fn_norm(x) = k);
-  UPDATE financ.orcamento_mes o SET categoria = p_para
-   WHERE financ.fn_norm(o.categoria) = k
-     AND NOT EXISTS (SELECT 1 FROM financ.orcamento_mes o2 WHERE o2.id <> o.id AND o2.competencia = o.competencia AND financ.fn_norm(o2.categoria) = financ.fn_norm(p_para));
   UPDATE financ.orcamento_mes SET categorias = ARRAY(SELECT DISTINCT CASE WHEN financ.fn_norm(x) = k THEN p_para ELSE x END FROM unnest(categorias) x)
    WHERE EXISTS (SELECT 1 FROM unnest(categorias) x WHERE financ.fn_norm(x) = k);
   RETURN n;
@@ -232,6 +249,9 @@ BEGIN
 
   IF v_acao IN ('editar','renomear','alterar') THEN
     v_novo := financ.fn_categoria_nome(financ.fn_txt(p, 'novo_nome'));
+    IF financ.fn_norm(c.nome) = 'outros' AND v_novo IS NOT NULL AND financ.fn_norm(v_novo) <> 'outros' THEN
+      RETURN jsonb_build_object('ok', false, 'erro', 'Outros é a categoria padrão: dá para trocar o ícone, mas não o nome.');
+    END IF;
     IF v_novo IS NOT NULL AND v_novo IS DISTINCT FROM c.nome THEN
       SELECT * INTO d FROM financ.categorias WHERE financ.fn_norm(nome) = financ.fn_norm(v_novo) AND id <> c.id;
       IF d.id IS NOT NULL THEN
@@ -244,7 +264,9 @@ BEGIN
         DELETE FROM financ.categorias WHERE id = c.id;
         UPDATE financ.categorias SET tipo = 'ambos' WHERE id = d.id AND tipo <> c.tipo AND tipo <> 'ambos';
         SELECT * INTO d FROM financ.categorias WHERE financ.fn_norm(nome) = financ.fn_norm(v_novo);
-        RETURN jsonb_build_object('ok', true, 'acao', 'juntar', 'de', c.nome, 'para', d.nome, 'movidos', v_n, 'categoria', to_jsonb(d));
+        RETURN jsonb_build_object('ok', true, 'acao', 'juntar', 'de', c.nome, 'para', d.nome, 'movidos', v_n, 'categoria', to_jsonb(d),
+          'aviso', CASE WHEN EXISTS (SELECT 1 FROM financ.orcamentos WHERE ativo AND financ.fn_norm(categoria) = financ.fn_norm(c.nome))
+                        THEN format('O orçamento %s continua separado do de %s; ajuste em Orçamentos.', c.nome, d.nome) END);
       END IF;
       UPDATE financ.categorias SET nome = v_novo WHERE id = c.id;
       v_n := financ.fn_mover_categoria(c.nome, v_novo);
@@ -266,6 +288,9 @@ BEGIN
          + (SELECT count(*) FROM financ.recorrentes WHERE financ.fn_norm(categoria) = financ.fn_norm(c.nome))
          + (SELECT count(*) FROM financ.parcelamentos WHERE financ.fn_norm(categoria) = financ.fn_norm(c.nome)) INTO v_n;
     v_destino := financ.fn_categoria_nome(financ.fn_txt(p, 'mover_para'));
+    IF v_destino IS NOT NULL AND financ.fn_norm(v_destino) = financ.fn_norm(c.nome) THEN
+      RETURN jsonb_build_object('ok', false, 'erro', 'Escolha outra categoria para receber os lançamentos.');
+    END IF;
     IF v_n > 0 THEN
       IF v_destino IS NULL THEN
         RETURN jsonb_build_object('ok', false, 'codigo', 'em_uso', 'em_uso', v_n,
@@ -280,7 +305,9 @@ BEGIN
     ELSE
       DELETE FROM financ.categorias WHERE id = c.id;
     END IF;
-    RETURN jsonb_build_object('ok', true, 'acao', 'excluir', 'excluida', c.nome, 'movidos', v_n, 'para', d.nome);
+    RETURN jsonb_build_object('ok', true, 'acao', 'excluir', 'excluida', c.nome, 'movidos', v_n, 'para', d.nome,
+      'aviso', CASE WHEN EXISTS (SELECT 1 FROM financ.orcamentos WHERE ativo AND financ.fn_norm(categoria) = financ.fn_norm(c.nome))
+                    THEN format('O orçamento %s continua; ajuste em Orçamentos.', c.nome) END);
   END IF;
 
   RETURN jsonb_build_object('ok', false, 'erro', 'Ação desconhecida: ' || v_acao || ' (use listar, criar, editar, excluir)');
@@ -305,16 +332,23 @@ BEGIN
     SELECT COALESCE(SUM(valor),0) INTO v_ent FROM financ.lancamentos WHERE tipo = 'entrada' AND competencia = m AND financ.fn_conta_caixa(conta_id);
     SELECT COALESCE(jsonb_agg(jsonb_build_object('id', id, 'descricao', descricao, 'valor', valor, 'data', data, 'conta', (SELECT nome FROM financ.contas WHERE id = l.conta_id)) ORDER BY data), '[]'::jsonb)
       INTO v_ent_items FROM financ.lancamentos l WHERE tipo = 'entrada' AND competencia = m AND financ.fn_conta_caixa(l.conta_id);
-    -- fixas/receitas fixas ainda não lançadas no mês, com o valor daquele mês (pode ter sido ajustado ou pulado)
+    -- fixas/receitas fixas ainda não lançadas, com o valor daquele mês (pode ter sido ajustado ou pulado);
+    -- no cartão, entra no mês da fatura em que cai o dia do vencimento (que pode ser o mês anterior)
     SELECT COALESCE(SUM(v.val) FILTER (WHERE rc.tipo='entrada'),0), COALESCE(SUM(v.val) FILTER (WHERE rc.tipo='saida'),0),
-           COALESCE(jsonb_agg(jsonb_build_object('recorrente_id', rc.id, 'descricao', rc.descricao, 'valor', v.val, 'valor_padrao', rc.valor, 'ajustado', v.val <> rc.valor,
-             'dia', rc.dia_vencimento, 'tipo', rc.tipo, 'metodo', rc.metodo) ORDER BY rc.dia_vencimento), '[]'::jsonb)
+           COALESCE(jsonb_agg(jsonb_build_object('recorrente_id', rc.id, 'mes', to_char(o.mes, 'YYYY-MM'), 'descricao', rc.descricao, 'valor', v.val,
+             'valor_padrao', rc.valor, 'ajustado', v.val <> rc.valor, 'dia', rc.dia_vencimento, 'tipo', rc.tipo, 'metodo', rc.metodo)
+             ORDER BY o.mes, rc.dia_vencimento), '[]'::jsonb)
       INTO v_ent_prev, v_fix_prev, v_fix_items
-      FROM financ.recorrentes rc CROSS JOIN LATERAL (SELECT financ.fn_recorrente_valor_mes(rc.id, m) AS val) v
-     WHERE rc.ativo AND financ.fn_conta_caixa(rc.conta_id) AND rc.inicio <= (m + interval '1 month - 1 day')::date AND (rc.fim IS NULL OR rc.fim >= m)
+      FROM financ.recorrentes rc
+      CROSS JOIN LATERAL (SELECT g::date AS mes FROM generate_series((m - interval '2 months')::date, m, interval '1 month') g
+                           WHERE CASE WHEN rc.metodo = 'credito' AND rc.cartao_id IS NOT NULL
+                                      THEN financ.fn_competencia_credito(financ.fn_data_no_mes(g::date, rc.dia_vencimento), rc.cartao_id) = m
+                                      ELSE g::date = m END) o
+      CROSS JOIN LATERAL (SELECT financ.fn_recorrente_valor_mes(rc.id, o.mes) AS val) v
+     WHERE rc.ativo AND financ.fn_conta_caixa(rc.conta_id) AND rc.inicio <= (o.mes + interval '1 month - 1 day')::date AND (rc.fim IS NULL OR rc.fim >= o.mes)
        AND (v_status <> 'realizado')
        AND v.val IS NOT NULL
-       AND NOT financ.fn_recorrente_lancada(rc.id, m);
+       AND NOT financ.fn_recorrente_lancada(rc.id, o.mes);
     -- saídas pagas pela conta (não crédito)
     SELECT COALESCE(SUM(valor) FILTER (WHERE origem = 'recorrente'),0), COALESCE(SUM(valor) FILTER (WHERE origem = 'parcela'),0), COALESCE(SUM(valor) FILTER (WHERE origem = 'avulso'),0)
       INTO v_fix_lanc, v_parc, v_outras FROM financ.lancamentos WHERE tipo = 'saida' AND metodo <> 'credito' AND competencia = m AND financ.fn_conta_caixa(conta_id);
@@ -398,11 +432,17 @@ BEGIN
       INTO v_ent, v_fix, v_parc, v_av FROM financ.lancamentos WHERE competencia = m;
     -- recorrentes ainda não lançadas neste mês (só a partir de hoje)
     SELECT COALESCE(SUM(v.val) FILTER (WHERE rc.tipo='entrada'),0), COALESCE(SUM(v.val) FILTER (WHERE rc.tipo='saida'),0) INTO v_ent_prev, v_fix_prev
-    FROM financ.recorrentes rc CROSS JOIN LATERAL (SELECT financ.fn_recorrente_valor_mes(rc.id, m) AS val) v
-    WHERE rc.ativo AND rc.inicio <= m AND (rc.fim IS NULL OR rc.fim >= m)
-      AND financ.fn_data_no_mes(m, rc.dia_vencimento) >= v_hoje
+    FROM financ.recorrentes rc
+    -- no cartão, a fixa conta no mês da fatura em que cai o vencimento
+    CROSS JOIN LATERAL (SELECT g::date AS mes FROM generate_series((m - interval '2 months')::date, m, interval '1 month') g
+                         WHERE CASE WHEN rc.metodo = 'credito' AND rc.cartao_id IS NOT NULL
+                                    THEN financ.fn_competencia_credito(financ.fn_data_no_mes(g::date, rc.dia_vencimento), rc.cartao_id) = m
+                                    ELSE g::date = m END) o
+    CROSS JOIN LATERAL (SELECT financ.fn_recorrente_valor_mes(rc.id, o.mes) AS val) v
+    WHERE rc.ativo AND rc.inicio <= o.mes AND (rc.fim IS NULL OR rc.fim >= o.mes)
+      AND financ.fn_data_no_mes(o.mes, rc.dia_vencimento) >= v_hoje
       AND v.val IS NOT NULL
-      AND NOT financ.fn_recorrente_lancada(rc.id, m);
+      AND NOT financ.fn_recorrente_lancada(rc.id, o.mes);
     SELECT COALESCE(jsonb_agg(jsonb_build_object('cartao', c.nome, 'valor', fi->'valor_fatura', 'status', fi->>'status', 'vencimento', fi->>'vencimento')), '[]'::jsonb) INTO v_cred
       FROM financ.cartoes c CROSS JOIN LATERAL financ.fn_fatura_info(c.id, m) fi WHERE c.ativo AND (fi->>'itens')::int > 0;
     v_aj := financ.fn_ajuste_faturas(m, m);
@@ -612,9 +652,9 @@ CREATE OR REPLACE FUNCTION financ.fn_gerenciar_recorrente(p jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
 AS $function$
-DECLARE v_acao text := COALESCE(financ.fn_norm(p->>'acao'), 'criar'); v_id int; r financ.recorrentes%ROWTYPE;
+DECLARE v_acao text := COALESCE(regexp_replace(financ.fn_norm(p->>'acao'), '[[:space:]-]+', '_', 'g'), 'criar'); v_id int; r financ.recorrentes%ROWTYPE;
   v_tipo text; v_metodo text; v_cartao int; v_conta int; v_dia int; v_hoje date := financ.fn_hoje(); v_prox date; v_desc text;
-  v_mes date; v_venc date; v_comp date; v_lanc financ.lancamentos%ROWTYPE; v_val numeric; v_data date; v_lid int; v_ed jsonb;
+  v_mes date; v_venc date; v_comp date; v_lanc financ.lancamentos%ROWTYPE; v_val numeric; v_data date; v_lid int;
 BEGIN
   IF v_acao IN ('listar','consultar') THEN
     RETURN jsonb_build_object('ok', true, 'recorrentes', COALESCE((SELECT jsonb_agg(financ.fn_recorrente_json(id) ORDER BY tipo, dia_vencimento)
@@ -646,25 +686,25 @@ BEGIN
   IF NOT FOUND THEN RETURN jsonb_build_object('ok', false, 'erro', 'Recorrente não encontrado'); END IF;
   -- ---------------------------------------------------------------- ações de um mês só (mes = YYYY-MM do vencimento; vazio = mês atual)
   IF v_acao IN ('ajustar_mes','valor_mes','mudar_mes','alterar_mes','pular_mes','pular','desfazer_mes','restaurar_mes','voltar_padrao',
-                'lancar_mes','lancar_agora','ja_paguei','paguei','recebi') THEN
+                'lancar_mes','lancar_agora','ja_paguei','paguei','recebi','ja_recebi') THEN
+    IF financ.fn_txt(p,'mes') IS NOT NULL AND financ.fn_parse_mes(financ.fn_txt(p,'mes')) IS NULL THEN
+      RETURN jsonb_build_object('ok', false, 'erro', 'Mês inválido: use AAAA-MM (ex.: 2026-12).');
+    END IF;
     v_mes := COALESCE(financ.fn_parse_mes(financ.fn_txt(p,'mes')), financ.fn_mes(v_hoje));
     IF v_mes < financ.fn_mes(r.inicio) OR (r.fim IS NOT NULL AND v_mes > r.fim) THEN
       RETURN jsonb_build_object('ok', false, 'erro', format('%s não vale em %s (vai de %s%s).', r.descricao, to_char(v_mes,'MM/YYYY'),
         to_char(r.inicio,'MM/YYYY'), COALESCE(' a ' || to_char(r.fim,'MM/YYYY'), ' em diante')));
     END IF;
     v_venc := financ.fn_data_no_mes(v_mes, r.dia_vencimento);
-    SELECT l.* INTO v_lanc FROM financ.lancamentos l
-     WHERE l.recorrente_id = r.id
-       AND l.competencia = CASE WHEN l.metodo = 'credito' AND l.cartao_id IS NOT NULL THEN financ.fn_competencia_credito(v_venc, l.cartao_id) ELSE v_mes END
-     ORDER BY l.id DESC LIMIT 1;
+    SELECT l.* INTO v_lanc FROM financ.lancamentos l WHERE l.id = financ.fn_recorrente_lancamento_mes(r.id, v_mes);
 
     IF v_acao IN ('ajustar_mes','valor_mes','mudar_mes','alterar_mes') THEN
       v_val := financ.fn_num(p,'valor');
       IF v_val IS NULL OR v_val <= 0 THEN RETURN jsonb_build_object('ok', false, 'erro', 'Informe o valor deste mês (para não ter nesse mês, use pular_mes).'); END IF;
       IF v_lanc.id IS NOT NULL THEN
-        -- já lançada: corrige o lançamento
-        v_ed := financ.fn_editar_lancamento(jsonb_build_object('id', v_lanc.id, 'valor', v_val));
-        IF NOT COALESCE((v_ed->>'ok')::boolean, false) THEN RETURN v_ed; END IF;
+        -- já lançada: corrige só o valor (a data e o mês/fatura continuam os mesmos)
+        UPDATE financ.lancamentos SET valor = v_val, atualizado_em = now() WHERE id = v_lanc.id;
+        UPDATE financ.pendencias SET valor_confirmado = v_val WHERE recorrente_id = r.id AND competencia = v_mes AND status = 'confirmada';
         RETURN jsonb_build_object('ok', true, 'acao', 'ajustar_mes', 'mes', to_char(v_mes,'YYYY-MM'), 'valor', v_val, 'lancamento_atualizado', true,
           'lancamento', financ.fn_lancamento_json(v_lanc.id), 'recorrente', financ.fn_recorrente_json(r.id));
       END IF;
@@ -676,7 +716,9 @@ BEGIN
         ON CONFLICT (recorrente_id, competencia) DO UPDATE
           SET valor = EXCLUDED.valor, pular = false, observacao = COALESCE(EXCLUDED.observacao, financ.recorrente_ajustes.observacao), atualizado_em = now();
       END IF;
-      UPDATE financ.pendencias SET valor_esperado = v_val WHERE recorrente_id = r.id AND competencia = v_mes AND status = 'aberta';
+      -- valor informado para o mês: a pergunta do mês volta a valer (mesmo que tivesse sido cancelada)
+      UPDATE financ.pendencias SET valor_esperado = v_val, status = 'aberta', resolvido_em = NULL
+       WHERE recorrente_id = r.id AND competencia = v_mes AND status IN ('aberta','cancelada');
       RETURN jsonb_build_object('ok', true, 'acao', 'ajustar_mes', 'mes', to_char(v_mes,'YYYY-MM'), 'valor', v_val, 'valor_padrao', r.valor,
         'vencimento', v_venc, 'recorrente', financ.fn_recorrente_json(r.id));
     END IF;
@@ -696,9 +738,12 @@ BEGIN
 
     IF v_acao IN ('desfazer_mes','restaurar_mes','voltar_padrao') THEN
       DELETE FROM financ.recorrente_ajustes WHERE recorrente_id = r.id AND competencia = v_mes;
-      UPDATE financ.pendencias SET status = 'aberta', resolvido_em = NULL WHERE recorrente_id = r.id AND competencia = v_mes AND status = 'cancelada';
-      UPDATE financ.pendencias SET valor_esperado = r.valor WHERE recorrente_id = r.id AND competencia = v_mes AND status = 'aberta';
-      RETURN jsonb_build_object('ok', true, 'acao', 'desfazer_mes', 'mes', to_char(v_mes,'YYYY-MM'), 'valor', r.valor, 'recorrente', financ.fn_recorrente_json(r.id));
+      IF v_lanc.id IS NULL THEN
+        UPDATE financ.pendencias SET status = 'aberta', resolvido_em = NULL, valor_esperado = r.valor
+         WHERE recorrente_id = r.id AND competencia = v_mes AND status IN ('aberta','cancelada');
+      END IF;
+      RETURN jsonb_build_object('ok', true, 'acao', 'desfazer_mes', 'mes', to_char(v_mes,'YYYY-MM'), 'valor', r.valor,
+        'ja_lancada', v_lanc.id IS NOT NULL, 'recorrente', financ.fn_recorrente_json(r.id));
     END IF;
 
     -- lancar_mes: "já paguei" / "já recebi" (antes do dia ou atrasada)
@@ -709,7 +754,9 @@ BEGIN
     IF v_mes > financ.fn_mes(v_hoje) THEN
       RETURN jsonb_build_object('ok', false, 'erro', 'Dá para lançar só a do mês atual ou de meses anteriores. Para um mês futuro, ajuste o valor ou pule o mês.');
     END IF;
-    v_val := COALESCE(financ.fn_num(p,'valor'), financ.fn_recorrente_valor_mes(r.id, v_mes), r.valor);
+    -- valor: o informado agora, senão o valor só deste mês, senão o normal (mesmo se a pergunta do mês tinha sido cancelada)
+    SELECT a.valor INTO v_val FROM financ.recorrente_ajustes a WHERE a.recorrente_id = r.id AND a.competencia = v_mes AND NOT a.pular;
+    v_val := COALESCE(financ.fn_num(p,'valor'), v_val, r.valor);
     IF v_val IS NULL OR v_val <= 0 THEN RETURN jsonb_build_object('ok', false, 'erro', 'Informe o valor.'); END IF;
     IF r.metodo = 'credito' AND r.cartao_id IS NOT NULL THEN
       v_data := v_venc;  -- no cartão a cobrança cai no dia do vencimento
@@ -720,15 +767,20 @@ BEGIN
       v_comp := v_mes;   -- é a conta daquele mês, mesmo paga em outro dia
       v_conta := COALESCE(financ.fn_resolver_conta(financ.fn_txt(p,'conta')), r.conta_id, financ.fn_conta_padrao());
     END IF;
-    INSERT INTO financ.lancamentos (data, competencia, descricao, categoria, valor, tipo, metodo, cartao_id, conta_id, origem, recorrente_id, observacao)
-    VALUES (v_data, v_comp, r.descricao, r.categoria, v_val, r.tipo, r.metodo, CASE WHEN r.metodo = 'credito' THEN r.cartao_id END, v_conta,
-            'recorrente', r.id, COALESCE(financ.fn_txt(p,'observacao'), 'lançado manualmente'))
-    RETURNING id INTO v_lid;
+    BEGIN
+      INSERT INTO financ.lancamentos (data, competencia, descricao, categoria, valor, tipo, metodo, cartao_id, conta_id, origem, recorrente_id, observacao)
+      VALUES (v_data, v_comp, r.descricao, r.categoria, v_val, r.tipo, r.metodo, CASE WHEN r.metodo = 'credito' THEN r.cartao_id END, v_conta,
+              'recorrente', r.id, COALESCE(financ.fn_txt(p,'observacao'), 'lançado manualmente'))
+      RETURNING id INTO v_lid;
+    EXCEPTION WHEN unique_violation THEN
+      RETURN jsonb_build_object('ok', false, 'erro', format('Já existe um lançamento de %s em %s (pode ser de outro mês que caiu na mesma fatura). Confira no extrato.',
+        r.descricao, to_char(v_comp,'MM/YYYY')));
+    END;
     IF r.metodo = 'credito' AND r.cartao_id IS NOT NULL THEN
       INSERT INTO financ.faturas (cartao_id, competencia) VALUES (r.cartao_id, v_comp) ON CONFLICT DO NOTHING;
     END IF;
     UPDATE financ.pendencias SET status = 'confirmada', valor_confirmado = v_val, resolvido_em = now()
-     WHERE recorrente_id = r.id AND competencia = v_mes AND status = 'aberta';
+     WHERE recorrente_id = r.id AND competencia = v_mes AND status IN ('aberta','cancelada');
     DELETE FROM financ.recorrente_ajustes WHERE recorrente_id = r.id AND competencia = v_mes AND pular;
     RETURN jsonb_build_object('ok', true, 'acao', 'lancar_mes', 'mes', to_char(v_mes,'YYYY-MM'), 'lancamento', financ.fn_lancamento_json(v_lid),
       'recorrente', financ.fn_recorrente_json(r.id),
@@ -743,7 +795,7 @@ BEGIN
     UPDATE financ.lancamentos SET recorrente_id = NULL WHERE recorrente_id = v_id;
     DELETE FROM financ.recorrentes WHERE id = v_id;
     RETURN jsonb_build_object('ok', true, 'acao', 'excluir', 'excluido', r.descricao);
-  ELSE
+  ELSIF v_acao IN ('editar','alterar','atualizar','mudar','modificar','corrigir','renomear','trocar') THEN
     v_metodo := COALESCE(financ.fn_metodo(p->>'metodo'), r.metodo);
     v_cartao := CASE WHEN financ.fn_txt(p,'cartao') IS NOT NULL THEN financ.fn_resolver_cartao(financ.fn_txt(p,'cartao')) ELSE r.cartao_id END;
     v_conta := CASE WHEN financ.fn_txt(p,'conta') IS NOT NULL THEN financ.fn_resolver_conta(financ.fn_txt(p,'conta')) ELSE r.conta_id END;
@@ -760,6 +812,9 @@ BEGIN
       confirmar = financ.fn_bool(p,'confirmar', confirmar), lembrar_antes = financ.fn_bool(p,'lembrar_antes', lembrar_antes),
       fim = COALESCE(financ.fn_parse_mes(financ.fn_txt(p,'fim')), fim)
     WHERE id = v_id;
+  ELSE
+    RETURN jsonb_build_object('ok', false, 'erro', 'Ação desconhecida: ' || v_acao
+      || ' (use criar, listar, editar, desativar, reativar, excluir, ajustar_mes, pular_mes, desfazer_mes ou lancar_mes)');
   END IF;
   RETURN jsonb_build_object('ok', true, 'acao', v_acao, 'recorrente', financ.fn_recorrente_json(v_id));
 END $function$;
