@@ -66,6 +66,10 @@ export async function snapshot(db: Executor = sql as Executor): Promise<{ dados:
       'saldos_informados', COALESCE((
          SELECT jsonb_agg(jsonb_build_object('conta_id', s.conta_id, 'data', s.data, 'saldo', s.saldo) ORDER BY s.data DESC)
            FROM financ.saldos s WHERE s.data >= (h.mes - interval '12 months')::date), '[]'::jsonb),
+      'importacoes', COALESCE((
+         SELECT jsonb_agg(jsonb_build_object('id', i.id, 'cartao_id', i.cartao_id, 'competencia', to_char(i.competencia, 'YYYY-MM'),
+                  'total', i.total, 'origem', i.origem, 'atualizado_em', i.atualizado_em) ORDER BY i.competencia DESC)
+           FROM financ.fatura_importacoes i WHERE i.competencia >= (h.mes - interval '12 months')::date), '[]'::jsonb),
       'categorias', COALESCE((
          SELECT jsonb_agg(jsonb_build_object('nome', x.categoria, 'tipo', x.tipo, 'n', x.n, 'ultimo', x.ultimo) ORDER BY x.n DESC, x.categoria)
            FROM (SELECT categoria, tipo, count(*) AS n, max(data) AS ultimo FROM financ.lancamentos GROUP BY categoria, tipo) x), '[]'::jsonb)

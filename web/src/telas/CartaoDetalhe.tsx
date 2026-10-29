@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Calculator, CheckCircle2, CircleDollarSign, Clock3, Pencil, Plus, RotateCcw } from 'lucide-react';
+import { ArrowLeft, Calculator, CheckCircle2, CircleDollarSign, Clock3, FileSearch, Pencil, Plus, RotateCcw } from 'lucide-react';
 import { useFinanc } from '../lib/estado';
 import { ir, voltar, useFolhas } from '../lib/navegacao';
 import { faturaEmFoco } from '../lib/financas';
@@ -35,6 +35,7 @@ export function CartaoDetalhe({ id }: { id: number }) {
   const foco = faturaEmFoco(cartao);
   const atual = comp ?? foco?.competencia ?? cartao.competencia_atual;
   const fatura = cartao.faturas.find((f) => f.competencia === atual);
+  const importada = snap.importacoes?.find((i) => i.cartao_id === cartao.id && i.competencia === atual);
   const itens = snap.lancamentos.filter((l) => l.metodo === 'credito' && l.cartao_id === cartao.id && l.competencia === atual);
   const usado = cartao.faturas[0]?.limite_usado_total ?? 0;
   const disponivel = cartao.faturas[0]?.limite_disponivel ?? null;
@@ -123,6 +124,16 @@ export function CartaoDetalhe({ id }: { id: number }) {
                     </button>
                   )}
                 </div>
+                {(importada || fatura.status !== 'aberta') && (
+                  <button type="button" className="linha conc-link" onClick={() => ir(`/carteira/cartao/${cartao.id}/conferir?mes=${fatura.competencia}`)}>
+                    <span className="linha-icone"><FileSearch /></span>
+                    <span className="linha-texto">
+                      <span className="linha-titulo" style={{ display: 'block' }}>Conferir com a fatura do banco</span>
+                      <span className="linha-sub" style={{ display: 'block' }}>{importada ? `PDF lido: ${reais(importada.total)}` : 'Envie o PDF ou espere o e-mail de fechamento'}</span>
+                    </span>
+                    <span aria-hidden="true" style={{ color: 'var(--ink-3)' }}>›</span>
+                  </button>
+                )}
               </div>
             )}
           </section>

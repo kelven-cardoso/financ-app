@@ -36,6 +36,26 @@ export async function api<T>(metodo: string, caminho: string, corpo?: unknown, o
   return dados as T;
 }
 
+/** envia um arquivo (corpo bruto), ex.: o PDF da fatura */
+export async function enviarArquivo<T>(caminho: string, arquivo: Blob, tipo: string): Promise<T> {
+  let r: Response;
+  try {
+    r = await fetch(caminho, {
+      method: 'POST',
+      headers: { 'x-financ': '1', 'content-type': tipo },
+      body: arquivo,
+      credentials: 'same-origin',
+      cache: 'no-store',
+      signal: AbortSignal.timeout(60000),
+    });
+  } catch {
+    throw new ErroApi(0, 'Sem conexão com o servidor', 'sem_rede');
+  }
+  const dados = await r.json().catch(() => ({}));
+  if (!r.ok) throw new ErroApi(r.status, (dados as { erro?: string }).erro ?? `Falha (${r.status})`, (dados as { codigo?: string }).codigo);
+  return dados as T;
+}
+
 export function novaChave(): string {
   const b = crypto.getRandomValues(new Uint8Array(16));
   return Array.from(b, (x) => x.toString(16).padStart(2, '0')).join('');

@@ -523,3 +523,41 @@ select.entrada { appearance: none; background-image: linear-gradient(45deg, tran
 .seletor-mes .rot { font-weight: 600; min-width: 108px; text-align: center; font-size: 15px; }
 .evento-ok { color: var(--good); }
 .evento-falha { color: var(--bad); }
+
+/* =============================================================== conferência da fatura do banco */
+.conc-resumo { padding: 16px; display: grid; gap: 8px; margin-bottom: 14px; }
+.conc-nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.conc-nums > div { display: grid; gap: 2px; min-width: 0; }
+.conc-nums strong { font-size: 17px; font-weight: 650; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.conc-nums strong.positivo { color: var(--good); }
+.conc-meta { margin: 0; display: flex; gap: 6px; align-items: flex-start; }
+.conc-meta svg { flex: none; margin-top: 2px; }
+.conc-abas { margin-bottom: 12px; }
+.conc-item { grid-template-columns: auto 1fr auto; }
+.conc-item label { cursor: pointer; }
+.conc-check { width: 22px; height: 22px; accent-color: var(--accent); margin: 0 4px 0 2px; flex: none; }
+.conc-item + .conc-item::before, .conc-dif + .conc-dif::before { left: 50px; }
+.conc-direita { display: grid; justify-items: end; gap: 4px; }
+.conc-cat {
+  font: inherit; font-size: 12.5px; font-weight: 550; color: var(--ink-2); background: var(--surface-3);
+  border: 0; border-radius: 99px; padding: 3px 22px 3px 10px; max-width: 132px;
+  appearance: none; -webkit-appearance: none;
+  background-image: linear-gradient(45deg, transparent 50%, currentColor 50%), linear-gradient(135deg, currentColor 50%, transparent 50%);
+  background-position: calc(100% - 11px) 52%, calc(100% - 7px) 52%; background-size: 4px 4px; background-repeat: no-repeat;
+}
+.tag-parcela { display: inline-block; margin-left: 6px; font-size: 11.5px; font-weight: 650; padding: 1px 7px; border-radius: 99px; background: var(--accent-soft); color: var(--accent-text); vertical-align: 1px; }
+.conc-barra {
+  position: sticky; bottom: calc(var(--tab-h) + var(--safe-b) + 10px); z-index: 5; margin-top: 12px;
+  display: grid; grid-template-columns: auto 1fr; gap: 8px; padding: 8px; border-radius: 16px;
+  background: color-mix(in srgb, var(--paper) 88%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-2);
+}
+.conc-dif { padding: 12px 14px; display: grid; gap: 10px; position: relative; }
+.conc-dif + .conc-dif::before { content: ''; position: absolute; top: 0; left: 14px; right: 0; border-top: 1px solid var(--line); }
+.conc-dif .acoes { grid-auto-flow: row; grid-template-columns: 1fr 1fr; }
+.conc-dif .acoes .btn:last-child { grid-column: span 2; }
+.conc-link { border-top: 1px solid var(--line); }
+@media (min-width: 900px) {
+  .conc-barra { bottom: 16px; }
+}
+.vazio .btn svg { color: inherit; width: 18px; height: 18px; margin: 0; opacity: 1; }

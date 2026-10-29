@@ -202,6 +202,38 @@ export type Snapshot = {
   movimentos: Movimento[];
   saldos_informados: { conta_id: number; data: string; saldo: number }[];
   categorias: { nome: string; tipo: string; n: number; ultimo: string }[];
+  importacoes?: { id: number; cartao_id: number; competencia: string; total: number | null; origem: 'email' | 'app'; atualizado_em: string }[];
+};
+
+export type EstadoItemBanco = 'faltando' | 'diferente' | 'conferido' | 'lancado' | 'ignorado';
+
+export type ItemBanco = {
+  id: number;
+  data: string;
+  descricao: string;
+  descricao_limpa: string;
+  valor: number;
+  tipo: 'compra' | 'encargo' | 'estorno';
+  parcela: string | null;
+  final: string | null;
+  categoria: string;
+  estado: EstadoItemBanco;
+  lancamento: null | { id: number; data: string; descricao: string; valor: number; categoria: string; competencia: string; outro_mes: boolean; parcela: string | null };
+};
+
+export type Conciliacao = {
+  importacao: {
+    id: number; cartao_id: number; cartao: string; competencia: string; vencimento: string | null; fechamento: string | null; periodo_ini: string | null;
+    total: number | null; saldo_financiado: number; origem: 'email' | 'app'; atualizado_em: string;
+    checagem: { ok: boolean; diferenca: number | null; soma_itens: number; esperado: number | null } | null;
+  };
+  contagem: Record<EstadoItemBanco, number>;
+  totais: { banco_total: number | null; banco_itens: number; faltando: number; app_lancado: number; app_fatura: number; so_no_app: number; diferenca: number };
+  itens: ItemBanco[];
+  so_no_app: { id: number; data: string; descricao: string; valor: number; categoria: string; tipo: string }[];
+  aplicado?: number;
+  movidos?: number;
+  erros?: { item: number; erro: string }[];
 };
 
 export type EstadoAuth = {

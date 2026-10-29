@@ -7,6 +7,7 @@ import { sql } from './db.js';
 import { ErroApi } from './http.js';
 import { limpar, migrar } from './migrate.js';
 import { rotasAuth } from './routes/auth.js';
+import { rotasConciliacao } from './routes/conciliacao.js';
 import { rotasDados } from './routes/dados.js';
 import { rotasSeguranca } from './routes/seguranca.js';
 
@@ -98,6 +99,7 @@ app.get('/healthz', async () => {
 await app.register(rotasAuth);
 await app.register(rotasSeguranca);
 await app.register(rotasDados);
+await app.register(rotasConciliacao);
 
 await app.register(fastifyStatic, {
   root: cfg.pastaEstatica,

@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import financ13 from './sql/financ_13_conciliacao.sql';
 import { sql } from './db.js';
 
 /**
@@ -68,6 +69,11 @@ const MIGRACOES: { versao: number; sql: string }[] = [
   },
 ];
 
+/** versões 1000+ = schema financ; para atualizar as funções, crie um arquivo novo e uma versão nova */
+const MIGRACOES_FINANC: { versao: number; sql: string }[] = [
+  { versao: 1013, sql: financ13 },
+];
+
 export async function migrar(): Promise<void> {
   // em produção o schema já existe e pertence ao papel do app (sem privilégio de criar schemas)
   const [existe] = await sql`SELECT 1 FROM pg_namespace WHERE nspname = 'financ_app'`;
@@ -85,10 +91,22 @@ export async function migrar(): Promise<void> {
     INSERT INTO financ_app.usuario (id, webauthn_user_id)
     VALUES (1, ${randomBytes(16).toString('base64url')})
     ON CONFLICT (id) DO NOTHING`;
+  // migrações do schema financ que vêm com o app (as anteriores ficam no fluxo de setup do n8n)
+  for (const m of MIGRACOES_FINANC) {
+    if (feitas.has(m.versao)) continue;
+    await sql.begin(async (tx) => {
+      await tx.unsafe(m.sql);
+      await tx`INSERT INTO financ_app.migracoes (versao) VALUES (${m.versao})`;
+    });
+  }
   await verificarSchemaFinanc();
+  // chave que o n8n usa para mandar o PDF da fatura (fica só no banco; os dois lados leem de lá)
+  await sql`
+    INSERT INTO financ.config (chave, valor) VALUES ('app_token_interno', ${randomBytes(32).toString('hex')})
+    ON CONFLICT (chave) DO NOTHING`;
 }
 
-/** O app depende da Migração 12 do schema financ (colunas de aparência e conta de benefício). */
+/** O app depende das Migrações 12 (aparência, benefício) e 13 (conciliação da fatura) do schema financ. */
 async function verificarSchemaFinanc(): Promise<void> {
   const [r] = await sql<{ ok: boolean }[]>`
     SELECT EXISTS (
@@ -97,9 +115,9 @@ async function verificarSchemaFinanc(): Promise<void> {
     ) AND EXISTS (
       SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
        WHERE n.nspname = 'financ' AND p.proname = 'fn_conta_beneficio'
-    ) AS ok`;
+    ) AND to_regclass('financ.fatura_itens') IS NOT NULL AS ok`;
   if (!r?.ok) {
-    throw new Error('O schema financ ainda não tem a Migração 12 (rode o fluxo de setup do Financ no n8n).');
+    throw new Error('O schema financ ainda não tem as Migrações 12 e 13 (rode o fluxo de setup do Financ no n8n).');
   }
 }
 

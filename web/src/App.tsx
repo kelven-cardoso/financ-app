@@ -7,6 +7,7 @@ import { Bloqueado, Configurar, Entrar, Iniciando } from './telas/Acesso';
 import { Inicio } from './telas/Inicio';
 import { Extrato } from './telas/Extrato';
 import { Carteira } from './telas/Carteira';
+import { Conferir } from './telas/Conferir';
 import { CartaoDetalhe } from './telas/CartaoDetalhe';
 import { ContaDetalhe } from './telas/ContaDetalhe';
 import { Ajustes } from './telas/Ajustes';
@@ -35,6 +36,7 @@ function Tela({ rota }: { rota: string }) {
   if (rota === '/extrato') return <Extrato />;
   if (rota === '/carteira' || rota === '/carteira/contas' || rota === '/carteira/caixinhas') return <Carteira />;
   if ((m = rota.match(/^\/carteira\/cartao\/(\d+)$/))) return <CartaoDetalhe id={Number(m[1])} />;
+  if ((m = rota.match(/^\/carteira\/cartao\/(\d+)\/conferir$/))) return <Conferir key={m[1]} cartaoId={Number(m[1])} />;
   if ((m = rota.match(/^\/carteira\/conta\/(\d+)$/))) return <ContaDetalhe id={Number(m[1])} />;
   if (rota === '/ajustes') return <Ajustes />;
   if (rota === '/ajustes/seguranca') return <Seguranca />;

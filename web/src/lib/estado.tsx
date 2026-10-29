@@ -43,6 +43,8 @@ type Ctx = {
   atualizarPerfil: () => Promise<void>;
   descartarDaFila: (id: string) => Promise<void>;
   apagarDadosDoAparelho: () => Promise<void>;
+  /** troca o snapshot por um que veio de outra chamada (ex.: conferência da fatura) */
+  aplicarSnapshot: (s: Snapshot) => Promise<void>;
 };
 
 const Contexto = createContext<Ctx | null>(null);
@@ -455,6 +457,7 @@ export function ProvedorFinanc({ children }: { children: ReactNode }) {
     fase, snap, online, sincronizando, ultimaSync, erroSync, fila, perfil,
     sincronizar, executar, entrarComSenha, entrarComDigital, desbloquearComDigital, desbloquearComSenha,
     configurarSenha, sair, bloquearAgora, atualizarPerfil, descartarDaFila, apagarDadosDoAparelho,
+    aplicarSnapshot: receberSnapshot,
   };
   return <Contexto.Provider value={valor}>{children}</Contexto.Provider>;
 }
