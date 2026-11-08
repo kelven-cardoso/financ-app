@@ -299,7 +299,14 @@ button.cartao { transition: transform 0.16s ease; }
 @media (min-width: 960px) {
   .pilha { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; }
   .pilha > .cartao-wrap { margin-top: 0; }
-  .trilha-cartoes { grid-auto-columns: minmax(320px, 1fr); margin: 0; padding: 2px 0 12px; }
+  /* no desktop não há como arrastar: vira grade que quebra linha e mostra todos os cartões */
+  .trilha-cartoes {
+    grid-auto-flow: row; grid-auto-columns: unset;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    overflow: visible; scroll-snap-type: none;
+    margin: 0; padding: 2px 0 12px;
+  }
+  .trilha-cartoes > * { max-width: 430px; }
 }
 
 /* =============================================================== grupos e linhas */
