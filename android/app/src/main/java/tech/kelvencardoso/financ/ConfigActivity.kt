@@ -20,7 +20,6 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationManagerCompat
-import com.google.androidbrowserhelper.trusted.LauncherActivity
 import org.json.JSONObject
 
 /** Tela nativa da captura: permissões, pareamento com o servidor e situação. */
@@ -29,7 +28,7 @@ class ConfigActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        Prefs.marcarConfigurado(this)
+        Prefs.marcarConfigurado(this) // mantido: indica que a tela já foi aberta
         val rolagem = ScrollView(this)
         corpo = LinearLayout(this)
         corpo.orientation = LinearLayout.VERTICAL
@@ -82,6 +81,14 @@ class ConfigActivity : Activity() {
         }
     }
 
+    /** Abre o Financ (site/PWA) no Chrome; sem Chrome, no navegador padrão. */
+    private fun abrirSite(url: String) {
+        val i = Intent(Intent.ACTION_VIEW, Uri.parse(url)).addCategory(Intent.CATEGORY_BROWSABLE)
+        if (!abrir(Intent(i).setPackage("com.android.chrome")) && !abrir(i)) {
+            Toast.makeText(this, "Abra $url no navegador", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun detalhesDoApp() {
         if (!abrir(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName")))) {
             Toast.makeText(this, "Abra Configurações > Apps > Financ", Toast.LENGTH_LONG).show()
@@ -119,9 +126,9 @@ class ConfigActivity : Activity() {
             }
         )
         botao("Parear com o Financ") {
-            // a chave vai no fragmento (#): fica no aparelho, não aparece nos registros do servidor
+            // abre o Financ no Chrome; a chave vai no fragmento (#), que não aparece nos registros do servidor
             val url = BuildConfig.BASE_URL + "/#chave=" + Prefs.chave(this)
-            abrir(Intent(this, LauncherActivity::class.java).setData(Uri.parse(url)))
+            abrirSite(url)
         }
         botao("Testar a conexão") {
             situacao.text = "Testando…"
@@ -200,6 +207,6 @@ class ConfigActivity : Activity() {
 
         val espaco = View(this)
         corpo.addView(espaco, LinearLayout.LayoutParams(1, dp(14)))
-        botao("Abrir o Financ") { abrir(Intent(this, LauncherActivity::class.java)) }
+        botao("Abrir o Financ") { abrirSite(BuildConfig.BASE_URL + "/") }
     }
 }

@@ -40,8 +40,9 @@ node dist/server.mjs # precisa das variáveis acima
 
 ## App Android (`android/`)
 
-O mesmo app, empacotado como Trusted Web Activity (abre o Financ pelo Chrome, em tela cheia), mais um serviço
-nativo que lê as notificações dos apps de banco escolhidos e as envia para `POST /api/captura/notificacao`.
+App "Financ Captura": um serviço nativo que lê as notificações dos apps de banco escolhidos e as envia para
+`POST /api/captura/notificacao`, com uma tela de permissões, pareamento e situação. O Financ em si continua sendo o
+PWA instalado pelo Chrome (os botões do app nativo abrem o site no Chrome).
 
 - Só segue o que fala de valor (`R$`); códigos de segurança e senhas são ignorados no aparelho e no servidor.
 - Cada aparelho gera a própria chave; o pareamento é feito dentro do app já logado (Ajustes › Captura de notificações).
