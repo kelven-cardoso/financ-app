@@ -2,6 +2,7 @@ import { randomBytes } from 'node:crypto';
 import financ13 from './sql/financ_13_conciliacao.sql';
 import financ14 from './sql/financ_14_conciliacao_alvo.sql';
 import financ15 from './sql/financ_15_previstos_categorias.sql';
+import financ16 from './sql/financ_16_acertos.sql';
 import { sql } from './db.js';
 
 /**
@@ -76,6 +77,7 @@ const MIGRACOES_FINANC: { versao: number; sql: string }[] = [
   { versao: 1013, sql: financ13 },
   { versao: 1014, sql: financ14 },
   { versao: 1015, sql: financ15 },
+  { versao: 1016, sql: financ16 },
 ];
 
 export async function migrar(): Promise<void> {
