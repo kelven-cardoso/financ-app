@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Tag da versão (ex.: android-v1.0.1)
+        description: 'Tag da versão, por exemplo android-v1.0.1'
         required: true
 
 permissions:
