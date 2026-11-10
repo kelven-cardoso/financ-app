@@ -1,12 +1,12 @@
 name: Conferir APK
 
-# Confere, com o apksigner oficial do Android, o financ.apk (o de android/dist ou o de uma versão publicada):
+# Confere, com o apksigner oficial do Android, o financ.apk (o de android/apk ou o de uma versão publicada):
 # assinatura v2 válida e certificado igual ao declarado em /.well-known/assetlinks.json.
 on:
   push:
     branches: [main]
     paths:
-      - 'android/dist/**'
+      - 'android/apk/**'
       - '.github/workflows/conferir-apk.yml'
   release:
     types: [published]
@@ -26,9 +26,9 @@ jobs:
       - uses: actions/checkout@v4
         if: github.event_name == 'push'
 
-      - name: APK do repositório (android/dist)
+      - name: APK do repositório (android/apk)
         if: github.event_name == 'push'
-        run: cp android/dist/financ.apk financ.apk
+        run: cp android/apk/financ.apk financ.apk
 
       - name: Baixar o financ.apk da versão
         if: github.event_name != 'push'

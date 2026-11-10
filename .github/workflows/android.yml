@@ -5,7 +5,7 @@ on:
     branches: [main]
     paths:
       - 'android/**'
-      - '!android/dist/**'
+      - '!android/apk/**'
       - '.github/workflows/android.yml'
   workflow_dispatch:
 
@@ -60,12 +60,12 @@ jobs:
               --notes "APK do Financ (app + leitura dos avisos do banco). Baixe o financ.apk no celular e instale."
           else
             # sem os segredos do keystore: fica um único pré-lançamento com o APK sem assinatura (não instala);
-            # o APK assinado e conferido é o android/dist/financ.apk do repositório
+            # o APK assinado e conferido é o android/apk/financ.apk do repositório
             for t in $(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName,isPrerelease --jq '.[] | select(.isPrerelease and (.tagName | startswith("android-build-") or . == "android-sem-assinatura")) | .tagName'); do
               gh release delete "$t" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
             done
             cp app-release-unsigned.apk financ-sem-assinatura.apk
             gh release create "android-sem-assinatura" financ-sem-assinatura.apk --repo "$GITHUB_REPOSITORY" \
               --title "Build $N (sem assinatura)" --prerelease \
-              --notes "Build intermediário $N, ainda sem assinatura: não instala. O APK para instalar é o android/dist/financ.apk."
+              --notes "Build intermediário $N, ainda sem assinatura: não instala. O APK para instalar é o android/apk/financ.apk."
           fi

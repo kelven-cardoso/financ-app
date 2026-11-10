@@ -8,7 +8,7 @@ import { Confirmar, useTorrada, Vazio } from '../ui/base';
 type Capturada = { id: string; recebido_em: string; quando: string | null; app: string | null; titulo: string | null; texto: string | null; encaminhado: boolean };
 type Estado = { pareado: boolean; ultimos_7_dias: number; aguardando_repasse: number; ultimas: Capturada[] };
 
-const APK = 'https://github.com/kelven-cardoso/financ-app/raw/main/android/dist/financ.apk';
+const APK = 'https://github.com/kelven-cardoso/financ-app/raw/main/android/apk/financ.apk';
 // abre a tela nativa de configuração quando o Financ está instalado pelo APK
 const TELA_NATIVA = 'intent://captura#Intent;scheme=financ;package=tech.kelvencardoso.financ;end';
 
