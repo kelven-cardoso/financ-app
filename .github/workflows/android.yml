@@ -55,7 +55,7 @@ jobs:
           ls -la
           if [ -f app-release.apk ]; then
             cp app-release.apk financ.apk
-            gh release create "android-v1.0.$N" financ.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            gh release create "android-v1.0.$N" financ.apk --repo "$GITHUB_REPOSITORY" \
               --title "Financ para Android 1.0.$N" --latest \
               --notes "APK do Financ (app + leitura dos avisos do banco). Baixe o financ.apk no celular e instale."
           else
@@ -65,7 +65,7 @@ jobs:
               gh release delete "$t" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes || true
             done
             cp app-release-unsigned.apk financ-sem-assinatura.apk
-            gh release create "android-sem-assinatura" financ-sem-assinatura.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            gh release create "android-sem-assinatura" financ-sem-assinatura.apk --repo "$GITHUB_REPOSITORY" \
               --title "Build $N (sem assinatura)" --prerelease \
               --notes "Build intermediário $N, ainda sem assinatura: não instala. O APK para instalar é o android/dist/financ.apk."
           fi
