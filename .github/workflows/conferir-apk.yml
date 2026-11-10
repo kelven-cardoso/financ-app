@@ -1,0 +1,34 @@
+name: Conferir APK
+
+# Confere, com o apksigner oficial do Android, o financ.apk publicado em uma versão:
+# assinatura v2 válida e certificado igual ao declarado em /.well-known/assetlinks.json.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag da versão (ex.: android-v1.0.1)
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  conferir:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar o financ.apk da versão
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern financ.apk
+
+      - name: apksigner verify
+        run: |
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --verbose --print-certs --min-sdk-version 26 financ.apk | tee saida.txt
+          grep -q "Verified using v2 scheme (APK Signature Scheme v2): true" saida.txt
+          grep -i "SHA-256 digest" saida.txt | tr -d ' :' | tr 'A-F' 'a-f' \
+            | grep -q "eff94c45c533bed0016e26f085c4eb75baa51fbcf6cbeea0f151ae2cc6122447"
+          "$BT/aapt2" dump badging financ.apk | head -4
