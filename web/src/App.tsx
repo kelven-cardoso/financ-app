@@ -16,6 +16,7 @@ import { Fixas } from './telas/Fixas';
 import { Orcamentos } from './telas/Orcamentos';
 import { Categorias } from './telas/Categorias';
 import { Sincronizacao } from './telas/Sincronizacao';
+import { Captura } from './telas/Captura';
 import { FormLancamento } from './formularios/Lancamento';
 
 const ABAS = [
@@ -45,6 +46,7 @@ function Tela({ rota }: { rota: string }) {
   if (rota === '/ajustes/orcamentos') return <Orcamentos />;
   if (rota === '/ajustes/categorias') return <Categorias />;
   if (rota === '/ajustes/sincronizacao') return <Sincronizacao />;
+  if (rota === '/ajustes/captura') return <Captura />;
   return <Inicio />;
 }
 

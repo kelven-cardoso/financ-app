@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CalendarRange, ChevronRight, CloudCog, Download, Info, LogOut, MoonStar, ShieldCheck, Tags, Target } from 'lucide-react';
+import { BellRing, CalendarRange, ChevronRight, CloudCog, Download, Info, LogOut, MoonStar, ShieldCheck, Tags, Target } from 'lucide-react';
 import { useFinanc } from '../lib/estado';
 import { ir, useFolhas } from '../lib/navegacao';
 import { preferencia, salvarPreferencia } from '../lib/local';
@@ -61,6 +61,7 @@ export function Ajustes() {
         <div className="grupo">
           <Item icone={<ShieldCheck />} titulo="Segurança" sub={perfil?.digitais ? 'Digital ativa, sessões e senha' : 'Digital, sessões e senha'} aoClicar={() => ir('/ajustes/seguranca')} />
           <Item icone={<CloudCog />} titulo="Sincronização" sub={pend ? `${pend} aguardando envio` : ultimaSync ? `Atualizado ${dataHora(ultimaSync)}` : 'Dados salvos neste aparelho'} aoClicar={() => ir('/ajustes/sincronizacao')} />
+          <Item icone={<BellRing />} titulo="Captura de notificações" sub="O app Android lê os avisos do banco" aoClicar={() => ir('/ajustes/captura')} />
         </div>
       </section>
       <section className="secao">

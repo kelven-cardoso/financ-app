@@ -28,7 +28,7 @@ Também aplica, uma vez, as migrações do schema `financ` que vêm com ele (`se
 versões 1013+ registradas em `financ_app.migracoes`): conferência da fatura do banco (13 e 14) e
 previstos, valor da fixa por mês, categorias cadastradas e correção do total informado da fatura (15);
 fixa paga ligada ao lançamento, receita fixa sem sobrescrita, propostas que não repetem o que já está lançado
-e usuário só de leitura para a consulta livre do agente (16); dados dos resumos automáticos em imagem (17).
+e usuário só de leitura para a consulta livre do agente (16); dados dos resumos automáticos em imagem (17); notificações capturadas pelo app Android (18).
 
 ## Desenvolvimento
 
@@ -37,3 +37,15 @@ npm ci
 npm run build        # web + servidor em dist/
 node dist/server.mjs # precisa das variáveis acima
 ```
+
+## App Android (`android/`)
+
+O mesmo app, empacotado como Trusted Web Activity (abre o Financ pelo Chrome, em tela cheia), mais um serviço
+nativo que lê as notificações dos apps de banco escolhidos e as envia para `POST /api/captura/notificacao`.
+
+- Só segue o que fala de valor (`R$`); códigos de segurança e senhas são ignorados no aparelho e no servidor.
+- Cada aparelho gera a própria chave; o pareamento é feito dentro do app já logado (Ajustes › Captura de notificações).
+- O servidor guarda o texto original por 90 dias (`financ.notif_capturas`) e repassa ao fluxo do n8n, que pergunta
+  no WhatsApp antes de lançar.
+- O APK sai pelo GitHub Actions (`.github/workflows/android.yml`) em Releases. A chave de assinatura nunca fica no
+  repositório: com os segredos `ANDROID_KEYSTORE_B64` e `ANDROID_KEYSTORE_PASSWORD` o build já sai assinado.

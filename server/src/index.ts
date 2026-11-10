@@ -7,6 +7,7 @@ import { sql } from './db.js';
 import { ErroApi } from './http.js';
 import { limpar, migrar } from './migrate.js';
 import { rotasAuth } from './routes/auth.js';
+import { encaminharPendentes, rotasCaptura } from './routes/captura.js';
 import { rotasConciliacao } from './routes/conciliacao.js';
 import { rotasDados } from './routes/dados.js';
 import { rotasSeguranca } from './routes/seguranca.js';
@@ -100,6 +101,7 @@ await app.register(rotasAuth);
 await app.register(rotasSeguranca);
 await app.register(rotasDados);
 await app.register(rotasConciliacao);
+await app.register(rotasCaptura);
 
 await app.register(fastifyStatic, {
   root: cfg.pastaEstatica,
@@ -124,6 +126,8 @@ app.setNotFoundHandler((req, reply) => {
 await migrar();
 await limpar().catch((e) => app.log.error(e, 'limpeza'));
 setInterval(() => limpar().catch((e) => app.log.error(e, 'limpeza')), 6 * 3600 * 1000).unref();
+// notificações capturadas que não chegaram ao n8n na hora: tenta de novo a cada 5 minutos
+setInterval(() => encaminharPendentes().catch((e) => app.log.error(e, 'captura')), 5 * 60 * 1000).unref();
 
 const encerrar = async () => {
   await app.close();

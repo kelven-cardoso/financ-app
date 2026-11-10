@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Financ</string>
+    <string name="titulo_config">Financ · Captura</string>
+    <string name="servico">Financ: leitura dos avisos do banco</string>
+    <string name="atalho_captura">Captura</string>
+    <string name="atalho_captura_longo">Captura de notificações</string>
+    <string name="asset_statements" translatable="false">[{ \"relation\": [\"delegate_permission/common.handle_all_urls\"], \"target\": { \"namespace\": \"web\", \"site\": \"https://financ.kelvencardoso.tech\" } }]</string>
+</resources>

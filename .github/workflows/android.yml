@@ -1,0 +1,65 @@
+name: Android APK
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'android/**'
+      - '.github/workflows/android.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.11.1'
+
+      # Com os segredos ANDROID_KEYSTORE_B64 e ANDROID_KEYSTORE_PASSWORD o APK já sai assinado.
+      # Sem eles sai sem assinatura (pré-lançamento) e é assinado fora do GitHub.
+      - name: Keystore (se houver)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/financ.p12"
+            echo "KEYSTORE_FILE=$RUNNER_TEMP/financ.p12" >> "$GITHUB_ENV"
+          fi
+
+      - name: Build
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          VERSION_NAME: 1.0.${{ github.run_number }}
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: financ
+        run: gradle -p android --no-daemon --stacktrace assembleRelease
+
+      - name: Publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+          N: ${{ github.run_number }}
+        run: |
+          cd android/app/build/outputs/apk/release
+          ls -la
+          if [ -f app-release.apk ]; then
+            cp app-release.apk financ.apk
+            gh release create "android-v1.0.$N" financ.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "Financ para Android 1.0.$N" --latest \
+              --notes "APK do Financ (app + leitura dos avisos do banco). Baixe o financ.apk no celular e instale."
+          else
+            cp app-release-unsigned.apk financ-sem-assinatura.apk
+            gh release create "android-build-$N" financ-sem-assinatura.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+              --title "Build $N (sem assinatura)" --prerelease \
+              --notes "Build intermediário, ainda sem assinatura: não instala. O APK assinado sai na versão android-v1.0.$N."
+          fi
