@@ -28,7 +28,7 @@ Também aplica, uma vez, as migrações do schema `financ` que vêm com ele (`se
 versões 1013+ registradas em `financ_app.migracoes`): conferência da fatura do banco (13 e 14) e
 previstos, valor da fixa por mês, categorias cadastradas e correção do total informado da fatura (15);
 fixa paga ligada ao lançamento, receita fixa sem sobrescrita, propostas que não repetem o que já está lançado
-e usuário só de leitura para a consulta livre do agente (16).
+e usuário só de leitura para a consulta livre do agente (16); dados dos resumos automáticos em imagem (17).
 
 ## Desenvolvimento
 
