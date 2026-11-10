@@ -5,6 +5,7 @@ import financ15 from './sql/financ_15_previstos_categorias.sql';
 import financ16 from './sql/financ_16_acertos.sql';
 import financ17 from './sql/financ_17_resumos_auto.sql';
 import financ18 from './sql/financ_18_captura.sql';
+import financ19 from './sql/financ_19_sem_captura.sql';
 import { sql } from './db.js';
 
 /**
@@ -82,6 +83,7 @@ const MIGRACOES_FINANC: { versao: number; sql: string }[] = [
   { versao: 1016, sql: financ16 },
   { versao: 1017, sql: financ17 },
   { versao: 1018, sql: financ18 },
+  { versao: 1019, sql: financ19 },
 ];
 
 export async function migrar(): Promise<void> {
@@ -136,6 +138,4 @@ export async function limpar(): Promise<void> {
   await sql`DELETE FROM financ_app.idempotencia WHERE criado_em < now() - interval '30 days'`;
   await sql`DELETE FROM financ_app.eventos WHERE criado_em < now() - interval '180 days'`;
   await sql`DELETE FROM financ_app.sessoes WHERE (revogada_em IS NOT NULL OR expira_em < now()) AND ultimo_uso < now() - interval '30 days'`;
-  // texto original das notificações capturadas: 90 dias bastam para conferir
-  await sql`DELETE FROM financ.notif_capturas WHERE recebido_em < now() - interval '90 days'`;
 }
