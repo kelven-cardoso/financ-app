@@ -47,5 +47,8 @@ nativo que lê as notificações dos apps de banco escolhidos e as envia para `P
 - Cada aparelho gera a própria chave; o pareamento é feito dentro do app já logado (Ajustes › Captura de notificações).
 - O servidor guarda o texto original por 90 dias (`financ.notif_capturas`) e repassa ao fluxo do n8n, que pergunta
   no WhatsApp antes de lançar.
-- O APK sai pelo GitHub Actions (`.github/workflows/android.yml`) em Releases. A chave de assinatura nunca fica no
-  repositório: com os segredos `ANDROID_KEYSTORE_B64` e `ANDROID_KEYSTORE_PASSWORD` o build já sai assinado.
+- O APK para instalar fica em `android/dist/financ.apk`. O build é do GitHub Actions (`.github/workflows/android.yml`);
+  a chave de assinatura nunca fica no repositório. Sem os segredos `ANDROID_KEYSTORE_B64` e `ANDROID_KEYSTORE_PASSWORD`
+  o build sai sem assinatura e é assinado à parte (`android/ferramentas/assinar_v2.py`, APK Signature Scheme v2);
+  com eles, sai assinado direto em Releases. Todo APK publicado passa pelo `apksigner verify` oficial
+  (`.github/workflows/conferir-apk.yml`).
